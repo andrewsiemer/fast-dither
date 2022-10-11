@@ -1,4 +1,4 @@
-/* 
+/*
  *  DTPalette.c
  *  dither Utility
  *
@@ -8,6 +8,7 @@
 
 #include <DTPalette.h>
 #include <stdlib.h>
+#include <assert.h>
 #include <math.h>
 
 DTPalette *
@@ -17,15 +18,15 @@ StandardPaletteBW(int size)
 
     DTPalette *palette = malloc(sizeof(DTPalette));
     palette->size = size;
-    palette->colors = malloc(sizeof(DTPixel) * size);
+    palette->colors = malloc(sizeof(DTPixel) * (unsigned) size);
 
     float step = 255.0f / (size - 1);
     for (int i = 0; i < size; i++)
-	palette->colors[i] = PixelFromRGB(
-	    roundf(i*step),
-	    roundf(i*step),
-	    roundf(i*step)
-	);
+        palette->colors[i] = PixelFromRGB(
+            (byte) (float) roundf(i*step),
+            (byte) (float) roundf(i*step),
+            (byte) (float) roundf(i*step)
+        );
 
     return palette;
 }
@@ -52,22 +53,23 @@ DTPixel
 FindClosestColorFromPalette(DTPixel needle, DTPalette *palette)
 {
     // search for smallest Euclidean distance
-    int index;
+    int index = -1;
     int d, minimal = 255 * 255 * 3 + 1;
     int dR, dG, dB;
     DTPixel current;
 
     for (int i = 0; i < palette->size; i++) {
-	current = palette->colors[i];
-	dR = needle.r - current.r;
-	dG = needle.g - current.g;
-	dB = needle.b - current.b;
-	d = dR * dR + dG * dG + dB * dB;
-	if (d < minimal) {
-	    minimal = d;
-	    index = i;
-	}
+        current = palette->colors[i];
+        dR = needle.r - current.r;
+        dG = needle.g - current.g;
+        dB = needle.b - current.b;
+        d = dR * dR + dG * dG + dB * dB;
+        if (d < minimal) {
+            minimal = d;
+            index = i;
+        }
     }
 
+    assert(index >= 0);
     return palette->colors[index];
 }

@@ -1,4 +1,8 @@
 dither
-obj/
-imgs/
+*/obj/
+*/imgs/
 *.1
+*.o
+*.objdump.S
+*.d
+*.plist
