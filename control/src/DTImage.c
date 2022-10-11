@@ -106,7 +106,7 @@ WriteImageToFile(DTImage *img, char *filename)
 
     } else {
         /* PPM */
-        fprintf(file, "P6\n%d %d\n255\n", img->width, img->height);
+        fprintf(file, "P6\n%zu %zu\n255\n", img->width, img->height);
         for (size_t i = 0; i < img->resolution; i++)
             fwrite(&img->pixels[i], sizeof(DTPixel), 1, file);
     }
@@ -132,10 +132,9 @@ ReadDataFromFile(DTImage *img, FILE *file)
     if (img->type == t_PPM) {
         /* simple format, done directly */
         fseek(file, PPM_HEADER, SEEK_SET);
-        fscanf(file, " %d %d %*d ", &img->width, &img->height);
-        img->pixels = malloc(sizeof(DTPixel) *
-                      (unsigned) img->width * (unsigned) img->height);
-        img->resolution = (unsigned) img->width * (unsigned) img->height;
+        fscanf(file, " %zu %zu %*zu ", &img->width, &img->height);
+        img->pixels = malloc(sizeof(DTPixel) * img->width * img->height);
+        img->resolution = img->width * img->height;
 
         for (size_t i = 0; i < img->resolution; i++)
             fread(&img->pixels[i], sizeof(DTPixel), 1, file);
@@ -159,12 +158,12 @@ ReadDataFromFile(DTImage *img, FILE *file)
 
         png_byte color_type, bit_depth;
 
-        img->width = (int) (png_uint_32) png_get_image_width(png, info);
-        img->height = (int) (png_uint_32) png_get_image_height(png, info);
+        img->width = png_get_image_width(png, info);
+        img->height = png_get_image_height(png, info);
         color_type = png_get_color_type(png, info);
         bit_depth = png_get_bit_depth(png, info);
 
-        img->resolution = (unsigned) img->width * (unsigned) img->height;
+        img->resolution = img->width * img->height;
 
         /* transform different types into 8bit RGB */
         if (bit_depth == 16) png_set_strip_16(png);
@@ -187,12 +186,10 @@ ReadDataFromFile(DTImage *img, FILE *file)
 
         png_read_update_info(png, info);
 
-        img->pixels = malloc(sizeof(DTPixel) *
-                (unsigned) img->width * (unsigned) img->height);
+        img->pixels = malloc(sizeof(DTPixel) * img->width * img->height);
 
         /* check if data is realy 8-bit RGB */
-        if (png_get_rowbytes(png, info) !=
-                ((unsigned) img->width) * sizeof(DTPixel))
+        if (png_get_rowbytes(png, info) != img->width * sizeof(DTPixel))
             return 4;
 
         png_bytep *rowPointers = PNGRowPointersForImage(img);
@@ -224,10 +221,10 @@ IdentifyImageType(char *header)
 png_bytep *
 PNGRowPointersForImage(DTImage *img)
 {
-    png_bytep *rowPointers = malloc(sizeof(png_bytep) * (unsigned) img->height);
-    png_size_t rowSize = (unsigned) img->width * sizeof(DTPixel);
+    png_bytep *rowPointers = malloc(sizeof(png_bytep) * img->height);
+    png_size_t rowSize = img->width * sizeof(DTPixel);
 
-    for (size_t i = 0; i < (size_t) img->height; i++)
+    for (size_t i = 0; i < img->height; i++)
         rowPointers[i] = (png_bytep)img->pixels + rowSize * i;
 
     return rowPointers;

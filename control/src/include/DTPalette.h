@@ -9,14 +9,15 @@
 #ifndef DT_PALETTE
 #define DT_PALETTE
 
+#include <stddef.h>
 #include <DTImage.h>
 
 typedef struct {
-    int size;
+    size_t size;
     DTPixel *colors;
 } DTPalette;
 
-DTPalette *StandardPaletteBW(int size);
+DTPalette *StandardPaletteBW(size_t size);
 DTPalette *StandardPaletteRGB(void);
 
 DTPixel FindClosestColorFromPalette(DTPixel pixel, DTPalette *palette);

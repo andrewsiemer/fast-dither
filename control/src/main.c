@@ -19,8 +19,8 @@
 #include <MCQuantization.h>
 
 DTPalette *PaletteForIdentifier(char *s, DTImage *img);
-DTPalette *ReadPaletteFromStdin(int size);
-DTPalette *QuantizedPaletteForImage(DTImage *image, int size);
+DTPalette *ReadPaletteFromStdin(size_t size);
+DTPalette *QuantizedPaletteForImage(DTImage *image, size_t size);
 
 int
 main(int argc, char ** argv)
@@ -68,7 +68,7 @@ main(int argc, char ** argv)
 
     /* dump palette if verbose option was set */
     if (verbose)
-        for (int i = 0; i < palette->size; i++)
+        for (size_t i = 0; i < palette->size; i++)
             printf("%d %d %d\n",
                 palette->colors[i].r,
                 palette->colors[i].g,
@@ -80,8 +80,8 @@ main(int argc, char ** argv)
     } else {
         /* closest color only */
         DTPixel *pixel;
-        for (int i = 0; i < input->height; i++) {
-            for (int j = 0; j < input->width; j++) {
+        for (size_t i = 0; i < input->height; i++) {
+            for (size_t j = 0; j < input->width; j++) {
                 pixel = &input->pixels[i*input->width + j];
                 *pixel = FindClosestColorFromPalette(*pixel, palette);
             }
@@ -102,11 +102,11 @@ PaletteForIdentifier(char *str, DTImage *image)
     char *sep = (char*) ".";
     name = strtok(str, sep);
     sizeStr = strtok(NULL, sep);
-    int size = 0;
+    size_t size = 0;
 
     /* if size was inserted, transform to int and check if is valid */
     if (sizeStr) {
-        size = (int)strtol(sizeStr, (char **)NULL, 10);
+        size = strtoul(sizeStr, (char **)NULL, 10);
         if (size <= 0) {
             fprintf(stderr, "Invalid palette size, aborting.\n");
             return NULL;
@@ -156,14 +156,14 @@ PaletteForIdentifier(char *str, DTImage *image)
 }
 
 DTPalette *
-ReadPaletteFromStdin(int size)
+ReadPaletteFromStdin(size_t size)
 {
     DTPalette *palette = malloc(sizeof(DTPalette));
     palette->size = size;
-    palette->colors = malloc(sizeof(DTPixel) * (unsigned) size);
+    palette->colors = malloc(sizeof(DTPixel) * size);
 
     unsigned int r, g, b;
-    for (int i = 0; i < size; i++) {
+    for (size_t i = 0; i < size; i++) {
         scanf(" %d %d %d", &r, &g, &b);
         palette->colors[i].r = (byte) r;
         palette->colors[i].g = (byte) g;
@@ -174,7 +174,7 @@ ReadPaletteFromStdin(int size)
 }
 
 DTPalette *
-QuantizedPaletteForImage(DTImage *image, int size)
+QuantizedPaletteForImage(DTImage *image, size_t size)
 {
     MCTriplet *data = malloc(sizeof(MCTriplet) * image->resolution);
     MCTriplet *colors;
@@ -187,14 +187,14 @@ QuantizedPaletteForImage(DTImage *image, int size)
             image->pixels[i].b
         );
 
-    colors = MCQuantizeData(data, (unsigned) image->resolution,
+    colors = MCQuantizeData(data, image->resolution,
             (mc_byte_t) (double) log2(size));
 
     palette = malloc(sizeof(DTPalette));
     palette->size = size;
-    palette->colors = malloc(sizeof(DTPixel) * (unsigned) size);
+    palette->colors = malloc(sizeof(DTPixel) * size);
 
-    for (int i = 0; i < size; i++) {
+    for (size_t i = 0; i < size; i++) {
         palette->colors[i].r = colors[i].value[0];
         palette->colors[i].g = colors[i].value[1];
         palette->colors[i].b = colors[i].value[2];

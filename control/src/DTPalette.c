@@ -8,20 +8,19 @@
 
 #include <DTPalette.h>
 #include <stdlib.h>
-#include <assert.h>
 #include <math.h>
 
 DTPalette *
-StandardPaletteBW(int size)
+StandardPaletteBW(size_t size)
 {
     if (size < 2) return NULL;
 
     DTPalette *palette = malloc(sizeof(DTPalette));
     palette->size = size;
-    palette->colors = malloc(sizeof(DTPixel) * (unsigned) size);
+    palette->colors = malloc(sizeof(DTPixel) * size);
 
     float step = 255.0f / (size - 1);
-    for (int i = 0; i < size; i++)
+    for (size_t i = 0; i < size; i++)
         palette->colors[i] = PixelFromRGB(
             (byte) (float) roundf(i*step),
             (byte) (float) roundf(i*step),
@@ -53,12 +52,12 @@ DTPixel
 FindClosestColorFromPalette(DTPixel needle, DTPalette *palette)
 {
     // search for smallest Euclidean distance
-    int index = -1;
+    size_t index = 0;
     int d, minimal = 255 * 255 * 3 + 1;
     int dR, dG, dB;
     DTPixel current;
 
-    for (int i = 0; i < palette->size; i++) {
+    for (size_t i = 0; i < palette->size; i++) {
         current = palette->colors[i];
         dR = needle.r - current.r;
         dG = needle.g - current.g;
@@ -70,6 +69,5 @@ FindClosestColorFromPalette(DTPixel needle, DTPalette *palette)
         }
     }
 
-    assert(index >= 0);
     return palette->colors[index];
 }

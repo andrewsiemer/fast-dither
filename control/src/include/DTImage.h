@@ -9,6 +9,8 @@
 #ifndef DT_IMAGE
 #define DT_IMAGE
 
+#include <stddef.h>
+
 #define e_PPM ".ppm"
 #define e_PNG ".png"
 
@@ -25,8 +27,8 @@ typedef enum {
 } DTImageType;
 
 typedef struct {
-    int width;
-    int height;
+    size_t width;
+    size_t height;
     DTImageType type;
     unsigned long resolution;
     DTPixel *pixels;

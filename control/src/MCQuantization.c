@@ -15,7 +15,7 @@
 typedef struct {
     MCTriplet min;
     MCTriplet max;
-    mc_uint_t size;
+    size_t size;
     MCTriplet *data;
 } MCCube;
 
@@ -38,15 +38,15 @@ MCTripletMake(mc_byte_t r, mc_byte_t g, mc_byte_t b)
 }
 
 MCTriplet *
-MCQuantizeData(MCTriplet *data, mc_uint_t size, mc_byte_t level)
+MCQuantizeData(MCTriplet *data, size_t size, mc_byte_t level)
 {
-    int p_size; /* generated palette size */
+    size_t p_size; /* generated palette size */
     MCCube *cubes;
     MCTriplet *palette;
 
-    p_size  = (int) (double) pow(2, level);
-    cubes   = malloc(sizeof(MCCube) * (unsigned) p_size);
-    palette = malloc(sizeof(MCTriplet) * (unsigned) p_size);
+    p_size  = (size_t) (double) pow(2, level);
+    cubes   = malloc(sizeof(MCCube) * p_size);
+    palette = malloc(sizeof(MCTriplet) * p_size);
 
     /* first cube */
     cubes[0].data = data;
@@ -54,10 +54,10 @@ MCQuantizeData(MCTriplet *data, mc_uint_t size, mc_byte_t level)
     MCShrinkCube(cubes);
 
     /* remaining cubes */
-    int parentIndex = 0;
+    size_t parentIndex = 0;
     int iLevel = 1; /* iteration level */
-    int offset;
-    int median;
+    size_t offset;
+    size_t median;
     MCCube *parentCube;
     while (iLevel <= level)
     {
@@ -69,16 +69,15 @@ MCQuantizeData(MCTriplet *data, mc_uint_t size, mc_byte_t level)
 
         median = parentCube->data[parentCube->size/2].value[dim];
 
-        offset = p_size / ((int) (double) pow(2, iLevel));
+        offset = p_size / ((size_t) (double) pow(2, iLevel));
 
         /* split cubes */
         cubes[parentIndex+offset] = *parentCube;
-        cubes[parentIndex].max.value[dim] = (mc_byte_t) (unsigned) median;
-        cubes[parentIndex+offset].min.value[dim] =
-                (mc_byte_t) (unsigned) median+1;
+        cubes[parentIndex].max.value[dim] = (mc_byte_t) median;
+        cubes[parentIndex+offset].min.value[dim] = (mc_byte_t) median+1;
 
         /* find new cube data sizes */
-        mc_uint_t newSize = 0;
+        size_t newSize = 0;
         while (parentCube->data[newSize].value[dim] <= median)
             newSize++;
         /* newSize is now the index of the first element above the
@@ -103,7 +102,7 @@ MCQuantizeData(MCTriplet *data, mc_uint_t size, mc_byte_t level)
     }
 
     /* find final cube averages */
-    for (int i = 0; i < p_size; i++)
+    for (size_t i = 0; i < p_size; i++)
         palette[i] = MCCubeAverage(&cubes[i]);
 
     free(cubes);
