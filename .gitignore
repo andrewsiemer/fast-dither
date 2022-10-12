@@ -6,3 +6,5 @@ dither
 *.objdump.S
 *.d
 *.plist
+*.png
+!samples/*.png

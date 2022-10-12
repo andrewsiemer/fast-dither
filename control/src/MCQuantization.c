@@ -12,6 +12,9 @@
 
 #define NUM_DIM 3u
 
+// Swaps two integral values.
+#define SWAP(a, b) do { (a) ^= (b); (b) ^= (a); (a) ^= (b); } while (0)
+
 typedef struct {
     MCTriplet min;
     MCTriplet max;
@@ -19,7 +22,8 @@ typedef struct {
     MCTriplet *data;
 } MCCube;
 
-static size_t dim; /* current cube biggest dimension */
+/* dimension comparison priority least -> greatest */
+static size_t dim_order[NUM_DIM];
 
 void MCShrinkCube(MCCube *cube);
 MCTriplet MCCubeAverage(MCCube *cube);
@@ -57,7 +61,6 @@ MCQuantizeData(MCTriplet *data, size_t size, mc_byte_t level)
     size_t parentIndex = 0;
     int iLevel = 1; /* iteration level */
     size_t offset;
-    size_t median;
     MCCube *parentCube;
     while (iLevel <= level)
     {
@@ -67,24 +70,18 @@ MCQuantizeData(MCTriplet *data, size_t size, mc_byte_t level)
         qsort(parentCube->data, parentCube->size,
                 sizeof(MCTriplet), MCCompareTriplet);
 
-        median = parentCube->data[parentCube->size/2].value[dim];
-
+        /* Get median location */
+        size_t mid = parentCube->size >> 1;
         offset = p_size / ((size_t) (double) pow(2, iLevel));
 
         /* split cubes */
         cubes[parentIndex+offset] = *parentCube;
-        cubes[parentIndex].max.value[dim] = (mc_byte_t) median;
-        cubes[parentIndex+offset].min.value[dim] = (mc_byte_t) median+1;
 
-        /* find new cube data sizes */
-        size_t newSize = 0;
-        while (parentCube->data[newSize].value[dim] <= median)
-            newSize++;
         /* newSize is now the index of the first element above the
          * median, thus it is also the count of elements below the median */
-        cubes[parentIndex        ].size = newSize;
-        cubes[parentIndex+offset].data += newSize;
-        cubes[parentIndex+offset].size -= newSize;
+        cubes[parentIndex        ].size = mid + 1;
+        cubes[parentIndex+offset].data += mid + 1;
+        cubes[parentIndex+offset].size -= mid + 1;
 
         /* shrink new cubes */
         MCShrinkCube(&cubes[parentIndex]);
@@ -149,14 +146,19 @@ MCCubeAverage(MCCube *cube)
 void
 MCCalculateBiggestDimension(MCCube *cube)
 {
-    int diff = 0;
-    int current;
+    MCTriplet diffs;
 
     for (size_t i = 0; i < NUM_DIM; i++) {
-        current = cube->max.value[i] - cube->min.value[i];
-        if (current > diff) {
-            dim = i;
-            diff = current;
+        diffs.value[i] = cube->max.value[i] - cube->min.value[i];
+        dim_order[i] = i;
+    }
+
+    for (size_t i = 0; i < NUM_DIM; i++) {
+        for (size_t j = i + 1; j < NUM_DIM; j++) {
+            if (diffs.value[i] > diffs.value[j]) {
+                SWAP(diffs.value[i], diffs.value[j]);
+                SWAP(dim_order[i], dim_order[j]);
+            }
         }
     }
 }
@@ -164,10 +166,15 @@ MCCalculateBiggestDimension(MCCube *cube)
 int
 MCCompareTriplet(const void *a, const void *b)
 {
-    MCTriplet *t1, *t2;
+    MCTriplet t1, t2;
+    int lhs, rhs;
 
-    t1 = (MCTriplet *)a;
-    t2 = (MCTriplet *)b;
+    t1 = * (MCTriplet *)a;
+    t2 = * (MCTriplet *)b;
+    lhs = t1.value[dim_order[0]] | t1.value[dim_order[1]] << 8u
+        | t1.value[dim_order[2]] << 16u;
+    rhs = t2.value[dim_order[0]] | t2.value[dim_order[1]] << 8u
+        | t2.value[dim_order[2]] << 16u;
 
-    return t1->value[dim] - t2->value[dim];
+    return lhs - rhs;
 }
