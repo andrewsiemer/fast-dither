@@ -95,11 +95,6 @@ static uint8_t RGBIndex[CO_COUNT][COLOR_CHANNELS] = {
 // Swaps two integral values.
 #define SWAP(a, b) do { (a) ^= (b); (b) ^= (a); (a) ^= (b); } while (0)
 
-// Uses the RGBIndex array to get a color channel in an MC triplet.
-#define GET_R(o, mc) ((int8_t) (mc).value[RGBIndex[o][0]])
-#define GET_G(o, mc) ((int8_t) (mc).value[RGBIndex[o][1]])
-#define GET_B(o, mc) ((int8_t) (mc).value[RGBIndex[o][2]])
-
 // Swaps the bytes in a pixel.
 #define SWIZZLE(p, b1, b2, b3)\
     (((((p) >> (8 * (b1 - 1))) & 0xFF) << 0) |\
@@ -133,8 +128,8 @@ COFindTarget(
     }
 
     // Use the index vector to determine which enum we should use.
-    int rGTg = (idx[0] == 1) || ((idx[0] > 0) && idx[1] > 0);
-    int rGTb = (idx[0] == 2) || ((idx[0] == 1) && idx[1] == 2);
+    int rGTg = (idx[0] == 0) || ((idx[0] == 2) && idx[1] == 0);
+    int rGTb = (idx[0] == 0) || ((idx[0] == 1) && idx[1] == 0);
     int gGTb = (idx[0] == 1) || ((idx[0] == 0) && idx[1] == 1);
 
     return (COrder) ((rGTg << 2) | (rGTb << 1) | gGTb);
