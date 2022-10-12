@@ -7,23 +7,21 @@
  */
 
 #include <MCQuantization.h>
+#include <COrder.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <assert.h>
 #include <math.h>
 
 #define NUM_DIM 3u
 
-// Swaps two integral values.
-#define SWAP(a, b) do { (a) ^= (b); (b) ^= (a); (a) ^= (b); } while (0)
-
 typedef struct {
     MCTriplet min;
     MCTriplet max;
+    COrder order;
     size_t size;
     MCTriplet *data;
 } MCCube;
-
-/* dimension comparison priority least -> greatest */
-static size_t dim_order[NUM_DIM];
 
 void MCShrinkCube(MCCube *cube);
 MCTriplet MCCubeAverage(MCCube *cube);
@@ -37,6 +35,7 @@ MCTripletMake(mc_byte_t r, mc_byte_t g, mc_byte_t b)
     triplet.value[0] = r;
     triplet.value[1] = g;
     triplet.value[2] = b;
+    triplet.pad = 0;
 
     return triplet;
 }
@@ -48,11 +47,12 @@ MCQuantizeData(MCTriplet *data, size_t size, mc_byte_t level)
     MCCube *cubes;
     MCTriplet *palette;
 
-    p_size  = (size_t) (double) pow(2, level);
+    p_size  = 1 << level;
     cubes   = malloc(sizeof(MCCube) * p_size);
     palette = malloc(sizeof(MCTriplet) * p_size);
 
     /* first cube */
+    cubes[0].order = CO_RGB;
     cubes[0].data = data;
     cubes[0].size = size;
     MCShrinkCube(cubes);
@@ -72,14 +72,14 @@ MCQuantizeData(MCTriplet *data, size_t size, mc_byte_t level)
 
         /* Get median location */
         size_t mid = parentCube->size >> 1;
-        offset = p_size / ((size_t) (double) pow(2, iLevel));
+        offset = p_size >> iLevel;
 
         /* split cubes */
         cubes[parentIndex+offset] = *parentCube;
 
         /* newSize is now the index of the first element above the
          * median, thus it is also the count of elements below the median */
-        cubes[parentIndex        ].size = mid + 1;
+        cubes[parentIndex].size = mid + 1;
         cubes[parentIndex+offset].data += mid + 1;
         cubes[parentIndex+offset].size -= mid + 1;
 
@@ -104,6 +104,9 @@ MCQuantizeData(MCTriplet *data, size_t size, mc_byte_t level)
 
     free(cubes);
 
+    printf("Palette:\n");
+    for (size_t i = 0; i < p_size; i++)
+        printf("%zu: (%u, %u, %u)\n", i, palette[i].value[0], palette[i].value[1], palette[i].value[2]);
     return palette;
 }
 
@@ -136,6 +139,9 @@ MCShrinkCube(MCCube *cube)
 MCTriplet
 MCCubeAverage(MCCube *cube)
 {
+    COSwapTo(cube->order, CO_RGB, (COrderPixel*) &cube->min, 1);
+    COSwapTo(cube->order, CO_RGB, (COrderPixel*) &cube->max, 1);
+
     return MCTripletMake(
         (cube->max.value[0] + cube->min.value[0]) / 2,
         (cube->max.value[1] + cube->min.value[1]) / 2,
@@ -146,35 +152,20 @@ MCCubeAverage(MCCube *cube)
 void
 MCCalculateBiggestDimension(MCCube *cube)
 {
-    MCTriplet diffs;
+    MCTriplet diffs = { .pad = 0 };
+    COrder new;
 
     for (size_t i = 0; i < NUM_DIM; i++) {
         diffs.value[i] = cube->max.value[i] - cube->min.value[i];
-        dim_order[i] = i;
     }
 
-    for (size_t i = 0; i < NUM_DIM; i++) {
-        for (size_t j = i + 1; j < NUM_DIM; j++) {
-            if (diffs.value[i] > diffs.value[j]) {
-                SWAP(diffs.value[i], diffs.value[j]);
-                SWAP(dim_order[i], dim_order[j]);
-            }
-        }
-    }
+    new = COFindTarget(cube->order, diffs);
+    COSwapTo(cube->order, new, (COrderPixel*) cube->data, cube->size);
+    cube->order = new;
 }
 
 int
 MCCompareTriplet(const void *a, const void *b)
 {
-    MCTriplet t1, t2;
-    int lhs, rhs;
-
-    t1 = * (MCTriplet *)a;
-    t2 = * (MCTriplet *)b;
-    lhs = t1.value[dim_order[0]] | t1.value[dim_order[1]] << 8u
-        | t1.value[dim_order[2]] << 16u;
-    rhs = t2.value[dim_order[0]] | t2.value[dim_order[1]] << 8u
-        | t2.value[dim_order[2]] << 16u;
-
-    return lhs - rhs;
+    return (*(int32_t*)a) - (*(int32_t*)b);
 }

@@ -8,6 +8,7 @@
 
 #include <MCQuantization.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <math.h>
 
 #define NUM_DIM 3u
@@ -23,7 +24,7 @@ typedef struct {
 } MCCube;
 
 /* dimension comparison priority least -> greatest */
-static size_t dim_order[NUM_DIM];
+static size_t dimOrder[NUM_DIM];
 
 void MCShrinkCube(MCCube *cube);
 MCTriplet MCCubeAverage(MCCube *cube);
@@ -48,7 +49,7 @@ MCQuantizeData(MCTriplet *data, size_t size, mc_byte_t level)
     MCCube *cubes;
     MCTriplet *palette;
 
-    p_size  = (size_t) (double) pow(2, level);
+    p_size  = 1 << level;
     cubes   = malloc(sizeof(MCCube) * p_size);
     palette = malloc(sizeof(MCTriplet) * p_size);
 
@@ -72,7 +73,7 @@ MCQuantizeData(MCTriplet *data, size_t size, mc_byte_t level)
 
         /* Get median location */
         size_t mid = parentCube->size >> 1;
-        offset = p_size / ((size_t) (double) pow(2, iLevel));
+        offset = p_size >> iLevel;
 
         /* split cubes */
         cubes[parentIndex+offset] = *parentCube;
@@ -104,6 +105,9 @@ MCQuantizeData(MCTriplet *data, size_t size, mc_byte_t level)
 
     free(cubes);
 
+    printf("Palette:\n");
+    for (size_t i = 0; i < p_size; i++)
+        printf("%zu: (%u, %u, %u)\n", i, palette[i].value[0], palette[i].value[1], palette[i].value[2]);
     return palette;
 }
 
@@ -150,14 +154,14 @@ MCCalculateBiggestDimension(MCCube *cube)
 
     for (size_t i = 0; i < NUM_DIM; i++) {
         diffs.value[i] = cube->max.value[i] - cube->min.value[i];
-        dim_order[i] = i;
+        dimOrder[i] = i;
     }
 
     for (size_t i = 0; i < NUM_DIM; i++) {
         for (size_t j = i + 1; j < NUM_DIM; j++) {
             if (diffs.value[i] > diffs.value[j]) {
                 SWAP(diffs.value[i], diffs.value[j]);
-                SWAP(dim_order[i], dim_order[j]);
+                SWAP(dimOrder[i], dimOrder[j]);
             }
         }
     }
@@ -171,10 +175,10 @@ MCCompareTriplet(const void *a, const void *b)
 
     t1 = * (MCTriplet *)a;
     t2 = * (MCTriplet *)b;
-    lhs = t1.value[dim_order[0]] | t1.value[dim_order[1]] << 8u
-        | t1.value[dim_order[2]] << 16u;
-    rhs = t2.value[dim_order[0]] | t2.value[dim_order[1]] << 8u
-        | t2.value[dim_order[2]] << 16u;
+    lhs = t1.value[dimOrder[0]] | t1.value[dimOrder[1]] << 8u
+        | t1.value[dimOrder[2]] << 16u;
+    rhs = t2.value[dimOrder[0]] | t2.value[dimOrder[1]] << 8u
+        | t2.value[dimOrder[2]] << 16u;
 
     return lhs - rhs;
 }
