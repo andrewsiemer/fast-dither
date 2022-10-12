@@ -35,7 +35,7 @@ CFLAGS =\
 	$(addprefix -I,$(wildcard $(INC)))
 
 # Static analysis program. We just use clang.
-STATIC_ANALYSIS = $(CC) $(CFLAGS) --analyze
+STATIC_ANALYSIS = $(CC) $(CFLAGS) --analyze -Xanalyzer -analyzer-output=text
 
 include config.mk
 
