@@ -7,11 +7,14 @@
  */
 
 #include <MCQuantization.h>
-#include <COrder.h>
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
 #include <math.h>
+
+#include <COrder.h>
+#include <QSelect.h>
 
 #define NUM_DIM 3u
 
@@ -23,14 +26,17 @@ typedef struct {
     MCTriplet *data;
 } MCCube;
 
-void MCShrinkCube(MCCube *cube);
-MCTriplet MCCubeAverage(MCCube *cube);
-void MCCalculateBiggestDimension(MCCube *cube);
-int MCCompareTriplet(const void *t1, const void *t2);
+static void MCShrinkCube(MCCube *cube);
+static void MCCalculateBiggestDimension(MCCube *cube);
+static void MCSplit(MCCube *lo, MCCube *hi);
+static MCTriplet MCCubeAverage(MCCube *cube);
 
 MCTriplet
-MCTripletMake(mc_byte_t r, mc_byte_t g, mc_byte_t b)
-{
+MCTripletMake(
+    mc_byte_t r,
+    mc_byte_t g,
+    mc_byte_t b
+) {
     MCTriplet triplet;
     triplet.value[0] = r;
     triplet.value[1] = g;
@@ -41,8 +47,11 @@ MCTripletMake(mc_byte_t r, mc_byte_t g, mc_byte_t b)
 }
 
 MCTriplet *
-MCQuantizeData(MCTriplet *data, size_t size, mc_byte_t level)
-{
+MCQuantizeData(
+    MCTriplet *data,
+    size_t size,
+    mc_byte_t level
+) {
     size_t p_size; /* generated palette size */
     MCCube *cubes;
     MCTriplet *palette;
@@ -66,26 +75,12 @@ MCQuantizeData(MCTriplet *data, size_t size, mc_byte_t level)
     {
         parentCube = &cubes[parentIndex];
 
+        // Change the byte ordering based on the dimension priority.
         MCCalculateBiggestDimension(parentCube);
-        qsort(parentCube->data, parentCube->size,
-                sizeof(MCTriplet), MCCompareTriplet);
 
-        /* Get median location */
-        size_t mid = parentCube->size >> 1;
+        // Partition the cube across the median.
         offset = p_size >> iLevel;
-
-        /* split cubes */
-        cubes[parentIndex+offset] = *parentCube;
-
-        /* newSize is now the index of the first element above the
-         * median, thus it is also the count of elements below the median */
-        cubes[parentIndex].size = mid + 1;
-        cubes[parentIndex+offset].data += mid + 1;
-        cubes[parentIndex+offset].size -= mid + 1;
-
-        /* shrink new cubes */
-        MCShrinkCube(&cubes[parentIndex]);
-        MCShrinkCube(&cubes[parentIndex+offset]);
+        MCSplit(parentCube, &cubes[parentIndex + offset]);
 
         /* check if iLevel must be increased by analysing if the next
          * offset is within palette size boundary. If not, change level
@@ -110,9 +105,10 @@ MCQuantizeData(MCTriplet *data, size_t size, mc_byte_t level)
     return palette;
 }
 
-void
-MCShrinkCube(MCCube *cube)
-{
+static void
+MCShrinkCube(
+    MCCube *cube
+) {
     mc_byte_t r, g, b;
     MCTriplet *data;
 
@@ -136,22 +132,10 @@ MCShrinkCube(MCCube *cube)
     }
 }
 
-MCTriplet
-MCCubeAverage(MCCube *cube)
-{
-    COSwapTo(cube->order, CO_RGB, (COrderPixel*) &cube->min, 1);
-    COSwapTo(cube->order, CO_RGB, (COrderPixel*) &cube->max, 1);
-
-    return MCTripletMake(
-        (cube->max.value[0] + cube->min.value[0]) / 2,
-        (cube->max.value[1] + cube->min.value[1]) / 2,
-        (cube->max.value[2] + cube->min.value[2]) / 2
-    );
-}
-
-void
-MCCalculateBiggestDimension(MCCube *cube)
-{
+static void
+MCCalculateBiggestDimension(
+    MCCube *cube
+) {
     MCTriplet diffs = { .pad = 0 };
     COrder new;
 
@@ -164,8 +148,50 @@ MCCalculateBiggestDimension(MCCube *cube)
     cube->order = new;
 }
 
-int
-MCCompareTriplet(const void *a, const void *b)
-{
-    return (*(int32_t*)a) - (*(int32_t*)b);
+/**
+ * @brief Splits lo across its median into [lo, hi].
+ * @param lo The cube to be split and the output lo half.
+ * @param hi The output hi half.
+ */
+static void
+MCSplit(
+    MCCube *lo,
+    MCCube *hi
+) {
+    assert(lo);
+    assert(hi);
+
+    // Find the median.
+    size_t mid = lo->size >> 1;
+    uint32_t median = QSelect((uint32_t*) lo->data, lo->size, mid);
+
+    // Partition across the median.
+    size_t lo_end, hi_start;
+    Partition((uint32_t*) lo->data, lo->size, median, &lo_end, &hi_start);
+    assert(lo_end < mid);
+    assert(mid < hi_start);
+
+    // Split the cubes by size.
+    *hi = *lo;
+    lo->size = mid + 1;
+    hi->data += lo->size;
+    hi->size -= lo->size;
+
+    // Shrink the value range of the cubes.
+    MCShrinkCube(lo);
+    MCShrinkCube(hi);
+}
+
+static MCTriplet
+MCCubeAverage(
+    MCCube *cube
+) {
+    COSwapTo(cube->order, CO_RGB, (COrderPixel*) &cube->min, 1);
+    COSwapTo(cube->order, CO_RGB, (COrderPixel*) &cube->max, 1);
+
+    return MCTripletMake(
+        (cube->max.value[0] + cube->min.value[0]) / 2,
+        (cube->max.value[1] + cube->min.value[1]) / 2,
+        (cube->max.value[2] + cube->min.value[2]) / 2
+    );
 }

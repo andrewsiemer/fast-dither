@@ -11,9 +11,12 @@
  */
 
 #include <COrder.h>
-#include <MCQuantization.h>
+
 #include <stdint.h>
 #include <stdlib.h>
+
+#include <UtilMacro.h>
+#include <MCQuantization.h>
 
 //The number of color channels we support.
 #define COLOR_CHANNELS 3
@@ -91,9 +94,6 @@ static uint8_t RGBIndex[CO_COUNT][COLOR_CHANNELS] = {
     [CO_BRG] = { 2, 0, 1 },
     [CO_BGR] = { 2, 1, 0 }
 };
-
-// Swaps two integral values.
-#define SWAP(a, b) do { (a) ^= (b); (b) ^= (a); (a) ^= (b); } while (0)
 
 // Swaps the bytes in a pixel.
 #define SWIZZLE(p, b1, b2, b3)\

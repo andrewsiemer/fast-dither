@@ -9,7 +9,10 @@
 LIBS += -lpng -lm
 
 # Code!
-OBJECTS = DTDither.o DTImage.o DTPalette.o MCQuantization.o main.o COrder.o
+OBJECTS =\
+	DTDither.o DTImage.o DTPalette.o MCQuantization.o\
+	COrder.o QSelect.o\
+	main.o
 
 # Binary!
 TARGET = dither
