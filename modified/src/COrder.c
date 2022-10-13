@@ -87,8 +87,8 @@ static uint8_t RGBIndex[CO_COUNT][COLOR_CHANNELS] = {
     [CO_RGB] = { 0, 1, 2 },
     [CO_RBG] = { 0, 2, 1 },
     [CO_GRB] = { 1, 0, 2 },
-    [CO_GBR] = { 2, 0, 1 },
-    [CO_BRG] = { 1, 2, 0 },
+    [CO_GBR] = { 1, 2, 0 },
+    [CO_BRG] = { 2, 0, 1 },
     [CO_BGR] = { 2, 1, 0 }
 };
 
@@ -114,10 +114,13 @@ COFindTarget(
     COrder order,
     MCTriplet diffs
 ) {
+    uint8_t idx[COLOR_CHANNELS];
+    for (size_t i = 0; i < COLOR_CHANNELS; i++) {
+        idx[i] = RGBIndex[order][i];
+    }
+
     // Argsort the array, starting with an index vector that is the argsort
     // of rgb into our current format.
-    uint8_t idx[COLOR_CHANNELS];
-    for (size_t i = 0; i < COLOR_CHANNELS; i++) idx[i] = RGBIndex[order][i];
     for (size_t i = 0; i < COLOR_CHANNELS; i++) {
         for (size_t j = i + 1; j < COLOR_CHANNELS; j++) {
             if (diffs.value[i] > diffs.value[j]) {
