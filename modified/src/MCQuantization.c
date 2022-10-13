@@ -99,9 +99,6 @@ MCQuantizeData(
 
     free(cubes);
 
-    printf("Palette:\n");
-    for (size_t i = 0; i < p_size; i++)
-        printf("%zu: (%u, %u, %u)\n", i, palette[i].value[0], palette[i].value[1], palette[i].value[2]);
     return palette;
 }
 
@@ -166,10 +163,9 @@ MCSplit(
     uint32_t median = QSelect((uint32_t*) lo->data, lo->size, mid);
 
     // Partition across the median.
-    size_t lo_end, hi_start;
-    Partition((uint32_t*) lo->data, lo->size, median, &lo_end, &hi_start);
-    assert(lo_end < mid);
-    assert(mid < hi_start);
+    size_t plo, phi;
+    Partition((uint32_t*) lo->data, lo->size, median, &plo, &phi);
+    assert((plo <= mid) && (mid <= phi));
 
     // Split the cubes by size.
     *hi = *lo;

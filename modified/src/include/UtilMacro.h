@@ -9,6 +9,11 @@
 #define __UTIL_MACRO_H__
 
 // Swaps two integral values.
-#define SWAP(a, b) do { (a) ^= (b); (b) ^= (a); (a) ^= (b); } while (0)
+#define SWAP(a, b)\
+do {\
+    __typeof__(a) _tmp = (a);\
+    (a) = (b);\
+    (b) = _tmp;\
+} while (0)
 
 #endif /* __UTIL_MACRO_H__ */

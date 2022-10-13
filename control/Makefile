@@ -52,7 +52,7 @@ C_OBJECTS := $(patsubst %.c,%.o,$(wildcard $(OBJECTS:.o=.c)))
 
 # Only include dependency files if we're not cleaning.
 ifeq (0,$(words $(filter %clean,$(MAKECMDGOALS))))
--include $(ALL_TARGETS:.x=.d)
+-include $(OBJECTS:.o=.d)
 endif
 
 ##### Build rules #####

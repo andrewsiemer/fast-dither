@@ -105,9 +105,6 @@ MCQuantizeData(MCTriplet *data, size_t size, mc_byte_t level)
 
     free(cubes);
 
-    printf("Palette:\n");
-    for (size_t i = 0; i < p_size; i++)
-        printf("%zu: (%u, %u, %u)\n", i, palette[i].value[0], palette[i].value[1], palette[i].value[2]);
     return palette;
 }
 
