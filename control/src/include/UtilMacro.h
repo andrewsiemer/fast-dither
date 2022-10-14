@@ -25,12 +25,13 @@ do {\
 #define TIMESTAMP(ts)\
 do {\
     unsigned _hi, _lo;\
-    __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));\
-    ts = ((unsigned long long)lo) | (((unsigned long long)hi) << 32);\
+    __asm__ __volatile__ ("rdtsc" : "=a" (_lo), "=d" (_hi));\
+    ts = ((unsigned long long)_lo) | (((unsigned long long)_hi) << 32);\
 } while (0)
 
 // Reports the time of a given test based on the given stamps and test name.
 #define TIME_REPORT(s, ts1, ts2)\
-    printf("Test %s completed in %lf cycles", s, (ts2 - ts1) * (MAX_FREQ/BASE_FREQ))
+    printf("Test %s completed in %lf cycles\n",\
+           s, (ts2 - ts1) * (MAX_FREQ/BASE_FREQ))
 
 #endif /* __UTIL_MACRO_H__ */

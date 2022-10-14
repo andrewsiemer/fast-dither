@@ -27,7 +27,7 @@ typedef struct {
     MCTriplet *data;
 } MCCube;
 
-typedef struct mc_workspace_t {
+struct mc_workspace_t {
     mc_byte_t level;
     size_t p_size;
     MCCube *cubes;
@@ -62,6 +62,7 @@ MCWorkspaceMake(mc_byte_t level)
     ws->p_size = 1 << level;
     ws->cubes = XMalloc(sizeof(MCCube) * ws->p_size);
     ws->palette = XMalloc(sizeof(MCTriplet) * ws->p_size);
+    return ws;
 }
 
 void
@@ -112,7 +113,7 @@ MCQuantizeData(
     }
 
     /* find final cube averages */
-    for (size_t i = 0; i < p_size; i++)
+    for (size_t i = 0; i < ws->p_size; i++)
         ws->palette[i] = MCCubeAverage(&ws->cubes[i]);
 
     MCTriplet *ret = ws->palette;

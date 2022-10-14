@@ -18,6 +18,7 @@
 #include <DTPalette.h>
 #include <MCQuantization.h>
 #include <XMalloc.h>
+#include <UtilMacro.h>
 
 DTPalette *PaletteForIdentifier(char *s, DTImage *img);
 DTPalette *ReadPaletteFromStdin(size_t size);
