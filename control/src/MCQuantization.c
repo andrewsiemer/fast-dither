@@ -7,14 +7,14 @@
  */
 
 #include <MCQuantization.h>
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
 
-#define NUM_DIM 3u
+#include <UtilMacro.h>
 
-// Swaps two integral values.
-#define SWAP(a, b) do { (a) ^= (b); (b) ^= (a); (a) ^= (b); } while (0)
+#define NUM_DIM 3u
 
 typedef struct {
     MCTriplet min;
@@ -22,6 +22,13 @@ typedef struct {
     size_t size;
     MCTriplet *data;
 } MCCube;
+
+typedef struct mc_workspace_t {
+    mc_byte_t level;
+    size_t p_size;
+    MCCube *cubes;
+    MCTriplet *palette;
+};
 
 /* dimension comparison priority least -> greatest */
 static size_t dimOrder[NUM_DIM];
@@ -42,30 +49,40 @@ MCTripletMake(mc_byte_t r, mc_byte_t g, mc_byte_t b)
     return triplet;
 }
 
-MCTriplet *
-MCQuantizeData(MCTriplet *data, size_t size, mc_byte_t level)
+MCWorkspace *
+MCWorkspaceMake(mc_byte_t level)
 {
-    size_t p_size; /* generated palette size */
-    MCCube *cubes;
-    MCTriplet *palette;
+    MCWorkspace *ws = XMalloc(sizeof(MCWorkspace));
+    ws->level = level;
+    ws->p_size = 1 << level;
+    ws->cubes = XMalloc(sizeof(MCCube) * ws->p_size);
+    ws->palette = XMalloc(sizeof(MCTriplet) * ws->p_size);
+}
 
-    p_size  = 1 << level;
-    cubes   = malloc(sizeof(MCCube) * p_size);
-    palette = malloc(sizeof(MCTriplet) * p_size);
+void
+MCWorkspaceDestroy(MCWorkspace *ws)
+{
+    free(ws->cubes);
+    free(ws->palette);
+    free(ws);
+}
 
+MCTriplet *
+MCQuantizeData(MCTriplet *data, size_t size, MCWorkspace *ws)
+{
     /* first cube */
-    cubes[0].data = data;
-    cubes[0].size = size;
-    MCShrinkCube(cubes);
+    ws->cubes[0].data = data;
+    ws->cubes[0].size = size;
+    MCShrinkCube(ws->cubes);
 
     /* remaining cubes */
     size_t parentIndex = 0;
     int iLevel = 1; /* iteration level */
     size_t offset;
     MCCube *parentCube;
-    while (iLevel <= level)
+    while (iLevel <= ws->level)
     {
-        parentCube = &cubes[parentIndex];
+        parentCube = &ws->cubes[parentIndex];
 
         MCCalculateBiggestDimension(parentCube);
         qsort(parentCube->data, parentCube->size,
@@ -73,25 +90,25 @@ MCQuantizeData(MCTriplet *data, size_t size, mc_byte_t level)
 
         /* Get median location */
         size_t mid = parentCube->size >> 1;
-        offset = p_size >> iLevel;
+        offset = ws->p_size >> iLevel;
 
         /* split cubes */
-        cubes[parentIndex+offset] = *parentCube;
+        ws->cubes[parentIndex+offset] = *parentCube;
 
         /* newSize is now the index of the first element above the
          * median, thus it is also the count of elements below the median */
-        cubes[parentIndex        ].size = mid + 1;
-        cubes[parentIndex+offset].data += mid + 1;
-        cubes[parentIndex+offset].size -= mid + 1;
+        ws->cubes[parentIndex        ].size = mid + 1;
+        ws->cubes[parentIndex+offset].data += mid + 1;
+        ws->cubes[parentIndex+offset].size -= mid + 1;
 
         /* shrink new cubes */
-        MCShrinkCube(&cubes[parentIndex]);
-        MCShrinkCube(&cubes[parentIndex+offset]);
+        MCShrinkCube(&ws->cubes[parentIndex]);
+        MCShrinkCube(&ws->cubes[parentIndex+offset]);
 
         /* check if iLevel must be increased by analysing if the next
          * offset is within palette size boundary. If not, change level
          * and reset parent to 0. If it is, set next element as parent. */
-        if (parentIndex + (offset * 2) < p_size) {
+        if (parentIndex + (offset * 2) < ws->p_size) {
             parentIndex = parentIndex + (offset * 2);
         } else {
             parentIndex = 0;
@@ -100,12 +117,12 @@ MCQuantizeData(MCTriplet *data, size_t size, mc_byte_t level)
     }
 
     /* find final cube averages */
-    for (size_t i = 0; i < p_size; i++)
-        palette[i] = MCCubeAverage(&cubes[i]);
+    for (size_t i = 0; i < ws->p_size; i++)
+        ws->palette[i] = MCCubeAverage(&ws->cubes[i]);
 
-    free(cubes);
-
-    return palette;
+    MCTriplet *ret = ws->palette;
+    ws->palette = NULL;
+    return ret;
 }
 
 void

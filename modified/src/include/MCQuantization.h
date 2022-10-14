@@ -20,7 +20,11 @@ typedef struct {
     mc_byte_t pad;
 } __attribute__((aligned (sizeof(uint32_t)))) MCTriplet;
 
+typedef struct mc_workspace_t MCWorkspace;
+
 MCTriplet MCTripletMake(mc_byte_t r, mc_byte_t g, mc_byte_t b);
-MCTriplet *MCQuantizeData(MCTriplet *data, size_t size, mc_byte_t level);
+MCWorkspace *MCWorkspaceMake(mc_byte_t level);
+void MCWorkspaceDestroy(MCWorkspace *ws);
+MCTriplet *MCQuantizeData(MCTriplet *data, size_t size, MCWorkspace *ws);
 
 #endif

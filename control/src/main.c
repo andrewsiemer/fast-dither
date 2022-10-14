@@ -17,6 +17,7 @@
 #include <DTDither.h>
 #include <DTPalette.h>
 #include <MCQuantization.h>
+#include <XMalloc.h>
 
 DTPalette *PaletteForIdentifier(char *s, DTImage *img);
 DTPalette *ReadPaletteFromStdin(size_t size);
@@ -176,9 +177,16 @@ ReadPaletteFromStdin(size_t size)
 DTPalette *
 QuantizedPaletteForImage(DTImage *image, size_t size)
 {
-    MCTriplet *data = malloc(sizeof(MCTriplet) * image->resolution);
+    MCTriplet *data = XMalloc(sizeof(MCTriplet) * image->resolution);
+    DTPalette *palette = XMalloc(sizeof(DTPalette));
+    MCWorkspace *ws = MCWorkspaceMake((mc_byte_t) (double) log2(size));
     MCTriplet *colors;
-    DTPalette *palette;
+
+    palette->colors = XMalloc(sizeof(DTPixel) * size);
+    palette->size = size;
+
+    unsigned long long ts1, ts2;
+    TIMESTAMP(ts1);
 
     for (size_t i = 0; i < image->resolution; i++)
         data[i] = MCTripletMake(
@@ -187,12 +195,7 @@ QuantizedPaletteForImage(DTImage *image, size_t size)
             image->pixels[i].b
         );
 
-    colors = MCQuantizeData(data, image->resolution,
-            (mc_byte_t) (double) log2(size));
-
-    palette = malloc(sizeof(DTPalette));
-    palette->size = size;
-    palette->colors = malloc(sizeof(DTPixel) * size);
+    colors = MCQuantizeData(data, image->resolution, ws);
 
     for (size_t i = 0; i < size; i++) {
         palette->colors[i].r = colors[i].value[0];
@@ -200,6 +203,10 @@ QuantizedPaletteForImage(DTImage *image, size_t size)
         palette->colors[i].b = colors[i].value[2];
     }
 
+    TIMESTAMP(ts2);
+    TIME_REPORT("MCQuantization", ts1, ts2);
+
+    MCWorkspaceDestroy(ws);
     free(data);
     free(colors);
 
