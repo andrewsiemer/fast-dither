@@ -31,7 +31,7 @@ do {\
 
 // Reports the time of a given test based on the given stamps and test name.
 #define TIME_REPORT(s, ts1, ts2)\
-    printf("Test %s completed in %lf cycles\n",\
-           s, (ts2 - ts1) * (MAX_FREQ/BASE_FREQ))
+    printf("%lf,\n",\
+        (ts2 - ts1) * (MAX_FREQ/BASE_FREQ))
 
 #endif /* __UTIL_MACRO_H__ */
