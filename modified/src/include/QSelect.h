@@ -23,8 +23,8 @@
  * @param plo The inclusive lower bound of the region equal to pivot.
  * @param phi The inclusive upper bound of the region equal to pivot.
  */
-void Partition(uint32_t *buf, size_t size,
-               uint32_t pivot, size_t *plo, size_t *phi);
+void MedianPartition(uint32_t *buf, size_t size,
+                     uint32_t pivot, size_t *plo, size_t *phi);
 
 /**
  * @brief Selects the kth sorted element in the given array.

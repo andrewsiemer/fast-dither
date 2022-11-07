@@ -16,3 +16,13 @@ OBJECTS =\
 
 # Binary!
 TARGET = dither
+
+### Build the sort look-up table for the 1-bit bitonic (4x8 byte) sort. ###
+
+sort_lut: sort_lut.c
+	$(CC) $(CFLAGS) -o $@ $@.c
+
+src/include/sort_lut.h: sort_lut
+	./sort_lut > $@
+
+src/QSelect.o: src/include/sort_lut.h
