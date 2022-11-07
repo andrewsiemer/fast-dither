@@ -9,6 +9,7 @@
 #include <DTPalette.h>
 #include <stdlib.h>
 #include <math.h>
+#include <UtilMacro.h>
 
 DTPalette *
 StandardPaletteBW(size_t size)
@@ -57,6 +58,8 @@ FindClosestColorFromPalette(DTPixel needle, DTPalette *palette)
     int dR, dG, dB;
     DTPixel current;
 
+    unsigned long long ts1, ts2;
+    TIMESTAMP(ts1);
     for (size_t i = 0; i < palette->size; i++) {
         current = palette->colors[i];
         dR = needle.r - current.r;
@@ -68,6 +71,8 @@ FindClosestColorFromPalette(DTPixel needle, DTPalette *palette)
             index = i;
         }
     }
+    TIMESTAMP(ts2);
+    TIME_REPORT("PaletteSearch", ts1, ts2);
 
     return palette->colors[index];
 }
