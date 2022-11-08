@@ -20,9 +20,9 @@
 #include <XMalloc.h>
 #include <UtilMacro.h>
 
-DTPalette *PaletteForIdentifier(char *s, DTImage *img);
-DTPalette *ReadPaletteFromStdin(size_t size);
-DTPalette *QuantizedPaletteForImage(DTImage *image, size_t size);
+DTPalettePacked *PaletteForIdentifier(char *s, DTImage *img);
+DTPalettePacked *ReadPaletteFromStdin(size_t size);
+DTPalettePacked *QuantizedPaletteForImage(DTImage *image, size_t size);
 
 int
 main(int argc, char ** argv)
@@ -65,16 +65,16 @@ main(int argc, char ** argv)
     DTImage *input = CreateImageFromFile(inputFile);
     if (input == NULL) return 2;
 
-    DTPalette *palette = PaletteForIdentifier(paletteID, input);
+    DTPalettePacked *palette = PaletteForIdentifier(paletteID, input);
     if (palette == NULL) return 3;
 
     /* dump palette if verbose option was set */
     if (verbose)
         for (size_t i = 0; i < palette->size; i++)
             printf("%d %d %d\n",
-                palette->colors[i].r,
-                palette->colors[i].g,
-                palette->colors[i].b
+                palette->rgb[i],
+                palette->rgb[palette->size+i],
+                palette->rgb[palette->size*2+i]
             );
 
     if (dither) {
@@ -92,13 +92,16 @@ main(int argc, char ** argv)
 
     WriteImageToFile(input, outputFile);
 
+    XFree(palette->rgb);
+    XFree(palette);
+
     return 0;
 }
 
-DTPalette *
+DTPalettePacked *
 PaletteForIdentifier(char *str, DTImage *image)
 {
-    if (str == NULL) return StandardPaletteRGB();
+    // if (str == NULL) return StandardPaletteRGB();
 
     char *name, *sizeStr;
     char *sep = (char*) ".";
@@ -116,20 +119,20 @@ PaletteForIdentifier(char *str, DTImage *image)
     }
 
     /* RGB */
-    if (strcmp(name, "rgb") == 0) {
-        if (size) fprintf(stderr, "Ignored palette size.\n");
-        return StandardPaletteRGB();
-    }
+    // if (strcmp(name, "rgb") == 0) {
+    //     if (size) fprintf(stderr, "Ignored palette size.\n");
+    //     return StandardPaletteRGB();
+    // }
 
-    if (strcmp(name, "bw") == 0) {
-        if (size == 1) {
-            fprintf(stderr,
-                    "Invalid palette size for B&W. Must be at least 2.\n");
-            return NULL;
-        }
-        if (!size) size = 2;
-        return StandardPaletteBW(size);
-    }
+    // if (strcmp(name, "bw") == 0) {
+    //     if (size == 1) {
+    //         fprintf(stderr,
+    //                 "Invalid palette size for B&W. Must be at least 2.\n");
+    //         return NULL;
+    //     }
+    //     if (!size) size = 2;
+    //     return StandardPaletteBW(size);
+    // }
 
     if (strcmp(name, "custom") == 0) {
         if (!size) {
@@ -157,33 +160,33 @@ PaletteForIdentifier(char *str, DTImage *image)
     return NULL;
 }
 
-DTPalette *
+DTPalettePacked *
 ReadPaletteFromStdin(size_t size)
 {
-    DTPalette *palette = malloc(sizeof(DTPalette));
+    DTPalettePacked *palette = XMalloc(sizeof(DTPalettePacked));
     palette->size = size;
-    palette->colors = malloc(sizeof(DTPixel) * size);
+    palette->rgb = XMalloc(size*sizeof(int)*3);
 
     unsigned int r, g, b;
     for (size_t i = 0; i < size; i++) {
         scanf(" %d %d %d", &r, &g, &b);
-        palette->colors[i].r = (byte) r;
-        palette->colors[i].g = (byte) g;
-        palette->colors[i].b = (byte) b;
+        palette->rgb[i] = (byte) r;
+        palette->rgb[palette->size+i] = (byte) g;
+        palette->rgb[palette->size*2+i] = (byte) b;
     }
 
     return palette;
 }
 
-DTPalette *
+DTPalettePacked *
 QuantizedPaletteForImage(DTImage *image, size_t size)
 {
     MCTriplet *data = XMalloc(sizeof(MCTriplet) * image->resolution);
-    DTPalette *palette = XMalloc(sizeof(DTPalette));
+    DTPalettePacked *palette = XMalloc(sizeof(DTPalettePacked));
     MCWorkspace *ws = MCWorkspaceMake((mc_byte_t) (double) log2(size));
     MCTriplet *colors;
 
-    palette->colors = XMalloc(sizeof(DTPixel) * size);
+    palette->rgb = XMalloc(size*sizeof(int)*3);
     palette->size = size;
 
     unsigned long long ts1, ts2;
@@ -198,18 +201,18 @@ QuantizedPaletteForImage(DTImage *image, size_t size)
 
     colors = MCQuantizeData(data, image->resolution, ws);
 
-    for (size_t i = 0; i < size; i++) {
-        palette->colors[i].r = colors[i].value[0];
-        palette->colors[i].g = colors[i].value[1];
-        palette->colors[i].b = colors[i].value[2];
+    for (size_t i = 0; i < palette->size; i++) {
+        palette->rgb[i] = colors[i].value[0];
+        palette->rgb[palette->size+i] = colors[i].value[1];
+        palette->rgb[palette->size*2+i] = colors[i].value[2];
     }
 
     TIMESTAMP(ts2);
     TIME_REPORT("MCQuantization", ts1, ts2);
 
     MCWorkspaceDestroy(ws);
-    free(data);
-    free(colors);
+    XFree(data);
+    XFree(colors);
 
     return palette;
 }

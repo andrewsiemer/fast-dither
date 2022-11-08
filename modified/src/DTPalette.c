@@ -13,58 +13,64 @@
 #include <immintrin.h>
 #include <XMalloc.h>
 
-DTPalette *
+DTPalettePacked *
 StandardPaletteBW(size_t size)
 {
     if (size < 2) return NULL;
 
-    DTPalette *palette = malloc(sizeof(DTPalette));
+    DTPalettePacked *palette = malloc(sizeof(DTPalettePacked));
     palette->size = size;
-    palette->colors = malloc(sizeof(DTPixel) * size);
+    palette->rgb = XMalloc(size*sizeof(int)*3);
 
     float step = 255.0f / (size - 1);
-    for (size_t i = 0; i < size; i++)
-        palette->colors[i] = PixelFromRGB(
-            (byte) (float) roundf(i*step),
-            (byte) (float) roundf(i*step),
-            (byte) (float) roundf(i*step)
-        );
-
+    for (size_t i = 0; i < size; i++) {
+        palette->rgb[i] = (byte) (float) roundf(i*step);
+        palette->rgb[palette->size+i] = (byte) (float) roundf(i*step);
+        palette->rgb[palette->size*2+i] = (byte) (float) roundf(i*step);
+    }
     return palette;
 }
 
-DTPalette *
+DTPalettePacked *
 StandardPaletteRGB()
 {
-    DTPalette *palette = malloc(sizeof(DTPalette));
+    DTPalettePacked *palette = malloc(sizeof(DTPalettePacked));
     palette->size = 8;
-    palette->colors = malloc(sizeof(DTPixel) * 3);
-    palette->colors[0] = PixelFromRGB(0xFF, 0x00, 0x00);
-    palette->colors[1] = PixelFromRGB(0x00, 0xFF, 0x00);
-    palette->colors[2] = PixelFromRGB(0x00, 0x00, 0xFF);
-    palette->colors[3] = PixelFromRGB(0x00, 0xFF, 0xFF);
-    palette->colors[4] = PixelFromRGB(0xFF, 0x00, 0xFF);
-    palette->colors[5] = PixelFromRGB(0xFF, 0xFF, 0x00);
-    palette->colors[6] = PixelFromRGB(0x00, 0x00, 0x00);
-    palette->colors[7] = PixelFromRGB(0xFF, 0xFF, 0xFF);
+    palette->rgb = XMalloc(palette->size*sizeof(int)*3);
+
+    palette->rgb[0] = 0xFF;
+    palette->rgb[1] = 0x00;
+    palette->rgb[2] = 0x00;
+    palette->rgb[3] = 0x00;
+    palette->rgb[4] = 0xFF;
+    palette->rgb[5] = 0xFF;
+    palette->rgb[6] = 0x00;
+    palette->rgb[7] = 0xFF;
+
+    palette->rgb[8] = 0x00;
+    palette->rgb[9] = 0xFF;
+    palette->rgb[10] = 0x00;
+    palette->rgb[11] = 0xFF;
+    palette->rgb[12] = 0x00;
+    palette->rgb[13] = 0xFF;
+    palette->rgb[14] = 0x00;
+    palette->rgb[15] = 0xFF;
+
+    palette->rgb[16] = 0x00;
+    palette->rgb[17] = 0x00;
+    palette->rgb[18] = 0xFF;
+    palette->rgb[19] = 0xFF;
+    palette->rgb[20] = 0xFF;
+    palette->rgb[21] = 0x00;
+    palette->rgb[22] = 0x00;
+    palette->rgb[23] = 0xFF;
 
     return palette;
 }
 
 DTPixel
-FindClosestColorFromPalette(DTPixel needle, DTPalette *palette)
-{
-    DTPixel current;
-    int *r = XMalloc(palette->size*sizeof(int));
-    int *g = XMalloc(palette->size*sizeof(int));
-    int *b = XMalloc(palette->size*sizeof(int));
-    for (size_t i = 0; i < palette->size; i++) {
-        current = palette->colors[i];
-        r[i] = (int)current.r;
-        g[i] = (int)current.g;
-        b[i] = (int)current.b;
-    }
-    
+FindClosestColorFromPalette(DTPixel needle, DTPalettePacked *palette)
+{    
     unsigned long long ts1, ts2;
     TIMESTAMP(ts1);
     // indices on the current iteration
@@ -83,12 +89,12 @@ FindClosestColorFromPalette(DTPixel needle, DTPalette *palette)
     __m256i curr_r, curr_g, curr_b, dist, curr_r2, curr_g2, curr_b2, dist2, mask;
     for (size_t i = 0; i < palette->size; i += 16) {
         // load next 16 palette colors
-        curr_r = _mm256_loadu_si256((__m256i*)&r[i]);
-        curr_g = _mm256_loadu_si256((__m256i*)&g[i]);
-        curr_b = _mm256_loadu_si256((__m256i*)&b[i]);
-        curr_r2 = _mm256_loadu_si256((__m256i*)&r[i+8]);
-        curr_g2 = _mm256_loadu_si256((__m256i*)&g[i+8]);
-        curr_b2 = _mm256_loadu_si256((__m256i*)&b[i+8]);
+        curr_r = _mm256_loadu_si256((__m256i*)&palette->rgb[i]);
+        curr_g = _mm256_loadu_si256((__m256i*)&palette->rgb[palette->size+i]);
+        curr_b = _mm256_loadu_si256((__m256i*)&palette->rgb[palette->size*2+i]);
+        curr_r2 = _mm256_loadu_si256((__m256i*)&palette->rgb[i+8]);
+        curr_g2 = _mm256_loadu_si256((__m256i*)&palette->rgb[palette->size+i+8]);
+        curr_b2 = _mm256_loadu_si256((__m256i*)&palette->rgb[palette->size*2+i+8]);
         // subtract difference
         curr_r = _mm256_sub_epi32(needle_r, curr_r);
         curr_g = _mm256_sub_epi32(needle_g, curr_g);
@@ -140,14 +146,12 @@ FindClosestColorFromPalette(DTPixel needle, DTPalette *palette)
         if (min[i] < m) {
             m = min[k = i];
         }
-    }    
+    }
+
+    DTPixel ret = {palette->rgb[idx[k]], palette->rgb[palette->size+idx[k]], palette->rgb[palette->size*2+idx[k]]};
 
     TIMESTAMP(ts2);
     TIME_REPORT("PaletteSearch", ts1, ts2);
-    
-    XFree(r);
-    XFree(g);
-    XFree(b);
 
-    return palette->colors[idx[k]];
+    return ret;
 }

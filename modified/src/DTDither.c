@@ -17,7 +17,7 @@ void ApplyDifference(DTPixel *pixel, DTDiff diff, int factor);
 byte ByteCap(int n);
 
 void
-ApplyFloydSteinbergDither(DTImage *image, DTPalette *palette)
+ApplyFloydSteinbergDither(DTImage *image, DTPalettePacked *palette)
 {
     for (size_t i = 0; i < image->height; i++) {
         for (size_t j = 0; j < image->width; j++) {
