@@ -30,8 +30,8 @@ LIBS =
 
 # Flags for use with the compiler. Currently assumes clang.
 CFLAGS =\
-	-std=c99 -Wall -Weverything -Werror -Wno-padded -Wno-covered-switch-default\
-	-mavx -mfma -O3\
+	-std=c99 -Wall -Werror -Wno-padded -Wno-covered-switch-default\
+	-mavx -mavx2 -mfma -O3\
 	$(addprefix -I,$(wildcard $(INC)))
 
 # Static analysis program. We just use clang.
