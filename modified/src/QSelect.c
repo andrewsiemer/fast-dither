@@ -84,28 +84,23 @@ __attribute__((aligned (32))) const uint8_t shuffle8id[32] = {
 #define REVERSE1X32(vec) REVERSE2X16(_mm256_permute2x128_si256(vec, vec, 0x01))
 
 /**
- * @brief Rolls a 32-byte vector by the given number of bytes to the left.
+ * @brief Moves the high half of the 32-byte vector over by the given number
+ *        of bytes, inserting it between the parts of the low half.
  */
-#define ROLL1X32_LEFT(v, b)\
+#define MHHR1X32(v, b)\
 do {\
-    uint8_t b_lo = (b) & 0xF, b_lo = (b) & 0x10;\
+    uint8_t _b = (b) & 0xF;\
     register __m256i _roll_mask = _mm256_cmpeq_epi8(v, v);\
-    _roll_mask = _mm256_bsrli_epi128(_roll_mask, 16 - ((b) & 0xF));\
+    _roll_mask = _mm256_bslli_epi128(_roll_mask, 16 - ((b) & 0xF));\
     register __m128i _roll_lo = _mm_setzero_si128();\
     _roll_lo = _mm_cmpeq_epi8(_roll_lo, _roll_lo);\
     _roll_mask = _mm256_xor_si256(_roll_mask, _mm256_zextsi128_si256(_roll_lo));\
-    register __m256i _roll_invert = _mm256_cmpeq_epi8(v, v);\
-    _roll_invert = _mm256_bsrli_epi128(_roll_invert, (b) & 0x10);\
-    _roll_mask = _mm256_xor_si256(_roll_mask, _roll_invert);\
     \
     register __m256i _v_hi, _v_lo, _tmp;\
-    _v_lo = _mm256_permute2x128_si256(v, v, 0x00);\
     _v_hi = _mm256_permute2x128_si256(v, v, 0x11);\
-    _tmp = _mm256_bsrli_epi128(_v_lo, 16 - b_lo);\
-    _v_lo = _mm256_bslli_epi128(_v_lo, b_lo);\
-    _v_lo = _mm256_or_si256(_v_lo, _tmp);\
-    _tmp = _mm256_bsrli_epi128(_v_hi, 16 - b_lo);\
-    _v_hi = _mm256_bslli_epi128(_v_hi, b_lo);\
+    v = _mm256_permute2x128_si256(v, v, 0x00);\
+    _tmp = _mm256_bslli_epi128(_v_hi, 16 - _b);\
+    _v_hi = _mm256_bsrli_epi128(_v_hi, _b);\
     _v_hi = _mm256_or_si256(_v_hi, _tmp);\
     \
     (v) = _mm256_blendv_epi8(_v_lo, _v_hi, _roll_mask);
@@ -175,47 +170,45 @@ do {\
 
 /**
  * @brief Sorts 8-bytes chunks of a vector based on the mask in arg.
- * @param arg The mask array to use for sorting.
+ * @param mask The mask array to use for sorting.
  * @param a1 An array to apply the masks sort to.
  * @param a2 An array to apply the masks sort to.
  * @param a3 An array to apply the masks sort to.
  */
-#define ARGMSORT1X32(arg, a1, a2, a3)\
+#define ARGMSORT1X32(mask, a1, a2, a3, count)\
 do {\
-    uint64_t loc, hic;\
-    ARGMSORT2X16(arg, a1, a2, a3, loc, hic);\
+    uint64_t _loc, _hic;\
+    ARGMSORT2X16(mask, a1, a2, a3, _loc, _hic);\
     \
-    register __m256i _tmp1, _tmp2, _mask, _revarg, _reva1, _reva2, _reva3;\
-    _tmp1 = _mm256_load_si256((const __m256i*) argmsort_1x32_invert);\
-    _tmp2 = _mm256_xor_si256(arg, _tmp1);\
+    register __m256i _move_mask = _mm256_cmpeq_epi8(a1, a1);\
+    _move_mask = _mm256_bslli_epi128(_move_mask, 16 - ((_hic) & 0xF));\
+    register __m128i _move_lo = _mm_setzero_si128();\
+    _move_lo = _mm_cmpeq_epi8(a1, a1);\
+    _move_mask = _mm256_xor_si256(_move_mask, _mm256_zextsi128_si256(_roll_lo));\
     \
-    tmp1 = _mm256_load_si256((const __m256i*) reverse_2x16_vec);\
-    revarg = _mm256_shuffle_epi8(arg, tmp1);\
-    reva1  = _mm256_shuffle_epi8(a1, tmp1);\
-    reva2  = _mm256_shuffle_epi8(a2, tmp1);\
-    reva3  = _mm256_shuffle_epi8(a3, tmp1);\
-    tmp1   = _mm256_shuffle_epi8(tmp2, tmp1);\
-    revarg = _mm256_permute2x128_si256(arg, arg, 0x01);\
-    reva1  = _mm256_permute2x128_si256(a1, a1, 0x01);\
-    reva2  = _mm256_permute2x128_si256(a2, a2, 0x01);\
-    reva3  = _mm256_permute2x128_si256(a3, a3, 0x01);\
-    tmp1   = _mm256_permute2x128_si256(tmp1, tmp1, 0x01);\
+    register _tmp, _roll_shuffle = _mm256_load_si256(shuffle8id);\
+    _tmp = _mm256_bslli_epi128(_roll_shuffle, 16 - _hic);\
+    _roll_shuffle = _mm256_bsrli_epi128(_roll_shuffle, _hic);\
     \
-    mask = _mm256_or_si256(tmp1, tmp2);\
-    arg = _mm256_blendv_epi8(arg, revarg, mask);\
-    a1  = _mm256_blendv_epi8(a1, reva1, mask);\
-    a2  = _mm256_blendv_epi8(a2, reva2, mask);\
-    a3  = _mm256_blendv_epi8(a3, reva3, mask);\
+    register _mask_hi, _a1_hi, _a2_hi, _a3_hi;\
+    _mask_hi = _mm256_permute2x128_si256(mask, mask, 0x11);\
+    _a1_hi = _mm256_permute2x128_si256(a1, a1, 0x11);\
+    _a2_hi = _mm256_permute2x128_si256(a2, a2, 0x11);\
+    _a3_hi = _mm256_permute2x128_si256(a3, a3, 0x11);\
+    mask = _mm256_permute2x128_si256(mask, mask, 0x00);\
+    a1 = _mm256_permute2x128_si256(a1, a1, 0x00);\
+    a2 = _mm256_permute2x128_si256(a2, a2, 0x00);\
+    a3 = _mm256_permute2x128_si256(a3, a3, 0x00);\
+    _mask_hi = _mm256_shuffle_epi8(_mask_hi, _roll_shuffle);\
+    _a1_hi = _mm256_shuffle_epi8(_a1_hi, _roll_shuffle);\
+    _a2_hi = _mm256_shuffle_epi8(_a2_hi, _roll_shuffle);\
+    _a3_hi = _mm256_shuffle_epi8(_a3_hi, _roll_shuffle);\
     \
-    register __m128i _roll_lo, _roll_hi;\
-    _roll_lo = _mm_load_si128(&roll_left_16x[hic]);\
-    _roll_hi = _mm_load_si128(&roll_left_16x[loc]);\
-    register __m256i _roll_shuffle = _mm_set_m128i(_roll_hi, _roll_lo);\
-    \
-    arg = _mm256_shuffle_epi8(arg, _roll_shuffle);\
-    a1 = _mm256_shuffle_epi8(a1, _roll_shuffle);\
-    a2 = _mm256_shuffle_epi8(a2, _roll_shuffle);\
-    a3 = _mm256_shuffle_epi8(a3, _roll_shuffle);\
+    mask = _mm256_blendv_epi8(mask, _mask_hi, _move_mask);\
+    a1 = _mm256_blendv_epi8(a1, _a1_hi, _move_mask);\
+    a2 = _mm256_blendv_epi8(a2, _a2_hi, _move_mask);\
+    a3 = _mm256_blendv_epi8(a3, _a3_hi, _move_mask);\
+    count = _loc + _hic;\
 } while (0)
 
 /**
