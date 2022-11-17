@@ -207,6 +207,10 @@ QuantizedPaletteForImage(DTImage *image, size_t size)
     TIMESTAMP(ts2);
     TIME_REPORT("MCQuantization", ts1, ts2);
 
+    printf("MCQuantization spent %llu cycles shrinking %llu pixels at %lf iops/cycle\n",
+           shrink_cycles, shrink_pixels,
+           (shrink_pixels * 6.0) / ((MAX_FREQ / BASE_FREQ) * shrink_cycles));
+
     MCWorkspaceDestroy(ws);
     free(data);
     free(colors);

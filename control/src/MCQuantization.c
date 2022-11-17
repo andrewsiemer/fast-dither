@@ -31,6 +31,9 @@ struct mc_workspace_t {
     MCTriplet *palette;
 };
 
+unsigned long long shrink_pixels;
+unsigned long long shrink_cycles;
+
 /* dimension comparison priority least -> greatest */
 static size_t dimOrder[NUM_DIM];
 
@@ -138,6 +141,9 @@ MCShrinkCube(MCCube *cube)
     cube->min = MCTripletMake(0xFF, 0xFF, 0xFF);
     cube->max = MCTripletMake(0x00, 0x00, 0x00);
 
+    shrink_pixels += cube->size;
+    unsigned long long t1, t2;
+    TIMESTAMP(t1);
     for (size_t i = 0; i < cube->size; i++) {
         r = data[i].value[0];
         g = data[i].value[1];
@@ -151,6 +157,8 @@ MCShrinkCube(MCCube *cube)
         if (g > cube->max.value[1]) cube->max.value[1] = g;
         if (b > cube->max.value[2]) cube->max.value[2] = b;
     }
+    TIMESTAMP(t2);
+    shrink_cycles += (t2 - t1);
 }
 
 MCTriplet

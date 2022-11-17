@@ -20,6 +20,7 @@ typedef struct {
 } MCTriplet;
 
 typedef struct mc_workspace_t MCWorkspace;
+extern unsigned long long shrink_pixels, shrink_cycles;
 
 MCTriplet MCTripletMake(mc_byte_t r, mc_byte_t g, mc_byte_t b);
 MCWorkspace *MCWorkspaceMake(mc_byte_t level);
