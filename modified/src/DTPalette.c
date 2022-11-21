@@ -8,6 +8,7 @@
 
 #include <DTPalette.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <math.h>
 #include <UtilMacro.h>
 #include <immintrin.h>
@@ -70,7 +71,7 @@ StandardPaletteRGB()
 
 DTPixel
 FindClosestColorFromPalette(DTPixel needle, DTPalettePacked *palette)
-{    
+{
     unsigned long long ts1, ts2;
     TIMESTAMP(ts1);
     // indices on the current iteration
@@ -85,7 +86,7 @@ FindClosestColorFromPalette(DTPixel needle, DTPalettePacked *palette)
     const __m256i needle_r = _mm256_set1_epi32(needle.r);
     const __m256i needle_g = _mm256_set1_epi32(needle.g);
     const __m256i needle_b = _mm256_set1_epi32(needle.b);
-    
+
     __m256i curr_r, curr_g, curr_b, dist, curr_r2, curr_g2, curr_b2, dist2, mask;
     for (size_t i = 0; i < palette->size; i += 16) {
         // load next 16 palette colors
@@ -137,7 +138,8 @@ FindClosestColorFromPalette(DTPixel needle, DTPalettePacked *palette)
     }
 
     // find the argmin in the "min" register and return its real index
-    int min[8], idx[8];
+    int min[8];
+    unsigned int idx[8];
     _mm256_storeu_si256((__m256i*)min, min_val);
     _mm256_storeu_si256((__m256i*)idx, min_idx);
 
@@ -148,7 +150,10 @@ FindClosestColorFromPalette(DTPixel needle, DTPalettePacked *palette)
         }
     }
 
-    DTPixel ret = {palette->rgb[idx[k]], palette->rgb[palette->size+idx[k]], palette->rgb[palette->size*2+idx[k]]};
+    DTPixel ret = {
+        (uint8_t) (unsigned int) palette->rgb[idx[k]],
+        (uint8_t) (unsigned int) palette->rgb[palette->size+idx[k]],
+        (uint8_t) (unsigned int) palette->rgb[palette->size*2+idx[k]]};
 
     TIMESTAMP(ts2);
     TIME_REPORT("PaletteSearch", ts1, ts2);

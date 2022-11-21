@@ -134,7 +134,7 @@ ReadDataFromFile(DTImage *img, FILE *file)
     if (img->type == t_PPM) {
         /* simple format, done directly */
         fseek(file, PPM_HEADER, SEEK_SET);
-        fscanf(file, " %zu %zu %*zu ", &img->width, &img->height);
+        fscanf(file, " %zu %zu ", &img->width, &img->height);
         img->pixels = malloc(sizeof(DTPixel) * img->width * img->height);
         img->resolution = img->width * img->height;
 
