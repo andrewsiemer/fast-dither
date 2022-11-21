@@ -414,7 +414,7 @@ AlignPartition(
         ARGMSORT2X32(ac, a1, a2, a3, bc, b1, b2, b3);
 
         // Determine which side is full.
-        if (_mm256_testc_si256(_mm256_setzero_si256(), amask)) {
+        if (ac == 0) {
             // amask is all zero, so the lo regs are full. Store them and then
             // move the b regs into the lo regs.
             _mm256_store_si256(&ch1[lo], a1);
@@ -423,7 +423,6 @@ AlignPartition(
             a1 = b1;
             a2 = b2;
             a3 = b3;
-            amask = bmask;
             next = ++lo;
         } else {
             // bmask must be filled with ones, so store those values.
