@@ -12,19 +12,16 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include <SplitImage.h>
+#include <DTPalette.h>
+
 typedef uint8_t mc_byte_t;
 typedef unsigned int mc_uint_t;
 
-typedef struct {
-    mc_byte_t value[3];
-    mc_byte_t pad;
-} __attribute__((aligned (sizeof(uint32_t)))) MCTriplet;
-
 typedef struct mc_workspace_t MCWorkspace;
 
-MCTriplet MCTripletMake(mc_byte_t r, mc_byte_t g, mc_byte_t b);
 MCWorkspace *MCWorkspaceMake(mc_byte_t level);
 void MCWorkspaceDestroy(MCWorkspace *ws);
-MCTriplet *MCQuantizeData(MCTriplet *data, size_t size, MCWorkspace *ws);
+DTPalette *MCQuantizeData(SplitImage *img, MCWorkspace *ws);
 
 #endif

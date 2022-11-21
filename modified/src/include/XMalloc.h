@@ -11,6 +11,7 @@
 #include <malloc.h>
 
 void *XMalloc(size_t size);
+void *XMemalign(size_t align, size_t size);
 void *XCalloc(size_t es, size_t nelt);
 void XFree(void *p);
 

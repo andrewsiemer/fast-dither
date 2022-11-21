@@ -20,6 +20,16 @@ XMalloc(
 }
 
 void *
+XMemalign(
+    size_t align,
+    size_t size
+) {
+    void *ret = memalign(align, size);
+    assert(ret);
+    return ret;
+}
+
+void *
 XCalloc(
     size_t es,
     size_t nelt

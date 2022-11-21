@@ -21,6 +21,10 @@ do {\
     (b) = _tmp;\
 } while (0)
 
+// mins/maxes two values.
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+
 // Outputs a timestamp into the given unsigned long long.
 #define TIMESTAMP(ts)\
 do {\

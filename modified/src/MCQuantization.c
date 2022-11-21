@@ -13,55 +13,46 @@
 #include <assert.h>
 #include <math.h>
 
-#include <COrder.h>
-#include <QSelect.h>
+#include <MedianPartition.h>
 #include <XMalloc.h>
 
 #define NUM_DIM 3u
 
+/**
+ * Enumeration of color dimensions in pixels.
+ *
+ * Used to track which dimension has the greatest range.
+ */
+typedef enum {
+    DIM_RED,
+    DIM_GREEN,
+    DIM_BLUE
+} color_dim_t;
+
 typedef struct {
-    MCTriplet min;
-    MCTriplet max;
-    COrder order;
+    DTPixel min;
+    DTPixel max;
     size_t size;
-    MCTriplet *data;
+    uint8_t *r;
+    uint8_t *g;
+    uint8_t *b;
 } MCCube;
 
 struct mc_workspace_t {
     mc_byte_t level;
-    size_t p_size;
     MCCube *cubes;
-    MCTriplet *palette;
+    DTPalette *palette;
 };
-
-static void MCShrinkCube(MCCube *cube);
-static void MCCalculateBiggestDimension(MCCube *cube);
-static void MCSplit(MCCube *lo, MCCube *hi);
-static MCTriplet MCCubeAverage(MCCube *cube);
-
-MCTriplet
-MCTripletMake(
-    mc_byte_t r,
-    mc_byte_t g,
-    mc_byte_t b
-) {
-    MCTriplet triplet;
-    triplet.value[0] = r;
-    triplet.value[1] = g;
-    triplet.value[2] = b;
-    triplet.pad = 0;
-
-    return triplet;
-}
 
 MCWorkspace *
 MCWorkspaceMake(mc_byte_t level)
 {
     MCWorkspace *ws = XMalloc(sizeof(MCWorkspace));
     ws->level = level;
-    ws->p_size = 1 << level;
-    ws->cubes = XMalloc(sizeof(MCCube) * ws->p_size);
-    ws->palette = XMalloc(sizeof(MCTriplet) * ws->p_size);
+    ws->palette = XMalloc(sizeof(DTPalette));
+    ws->palette->size = 1 << level;
+    ws->palette->colors = XMalloc(sizeof(DTPixel) * ws->palette->size);
+    ws->cubes = XMalloc(sizeof(MCCube) * ws->palette->size);
     return ws;
 }
 
@@ -73,95 +64,45 @@ MCWorkspaceDestroy(MCWorkspace *ws)
     free(ws);
 }
 
-MCTriplet *
-MCQuantizeData(
-    MCTriplet *data,
-    size_t size,
-    MCWorkspace *ws
-) {
-    /* first cube */
-    ws->cubes[0].order = CO_RGB;
-    ws->cubes[0].data = data;
-    ws->cubes[0].size = size;
-    MCShrinkCube(ws->cubes);
-
-    /* remaining cubes */
-    size_t parentIndex = 0;
-    int iLevel = 1; /* iteration level */
-    size_t offset;
-    MCCube *parentCube;
-    while (iLevel <= ws->level)
-    {
-        parentCube = &ws->cubes[parentIndex];
-
-        // Change the byte ordering based on the dimension priority.
-        MCCalculateBiggestDimension(parentCube);
-
-        // Partition the cube across the median.
-        offset = ws->p_size >> iLevel;
-        MCSplit(parentCube, &ws->cubes[parentIndex + offset]);
-
-        /* check if iLevel must be increased by analysing if the next
-         * offset is within palette size boundary. If not, change level
-         * and reset parent to 0. If it is, set next element as parent. */
-        if (parentIndex + (offset * 2) < ws->p_size) {
-            parentIndex = parentIndex + (offset * 2);
-        } else {
-            parentIndex = 0;
-            iLevel++;
-        }
-    }
-
-    /* find final cube averages */
-    for (size_t i = 0; i < ws->p_size; i++)
-        ws->palette[i] = MCCubeAverage(&ws->cubes[i]);
-
-    MCTriplet *ret = ws->palette;
-    ws->palette = NULL;
-    return ret;
-}
-
 static void
 MCShrinkCube(
     MCCube *cube
 ) {
     mc_byte_t r, g, b;
-    MCTriplet *data;
 
-    data = cube->data;
-
-    cube->min = MCTripletMake(0xFF, 0xFF, 0xFF);
-    cube->max = MCTripletMake(0x00, 0x00, 0x00);
+    cube->min = (DTPixel) { .r = 255, .g = 255, .b = 255 };
+    cube->max = (DTPixel) { .r = 0, .g = 0, .b = 0 };
 
     for (size_t i = 0; i < cube->size; i++) {
-        r = data[i].value[0];
-        g = data[i].value[1];
-        b = data[i].value[2];
+        r = cube->r[i];
+        g = cube->g[i];
+        b = cube->b[i];
 
-        if (r < cube->min.value[0]) cube->min.value[0] = r;
-        if (g < cube->min.value[1]) cube->min.value[1] = g;
-        if (b < cube->min.value[2]) cube->min.value[2] = b;
+        if (r < cube->min.r) cube->min.r = r;
+        if (g < cube->min.g) cube->min.g = g;
+        if (b < cube->min.b) cube->min.b = b;
 
-        if (r > cube->max.value[0]) cube->max.value[0] = r;
-        if (g > cube->max.value[1]) cube->max.value[1] = g;
-        if (b > cube->max.value[2]) cube->max.value[2] = b;
+        if (r > cube->max.r) cube->max.r = r;
+        if (g > cube->max.g) cube->max.g = g;
+        if (b > cube->max.b) cube->max.b = b;
     }
 }
 
-static void
+static color_dim_t
 MCCalculateBiggestDimension(
     MCCube *cube
 ) {
-    MCTriplet diffs = { .pad = 0 };
-    COrder new;
+    mc_byte_t r = cube->max.r - cube->min.r;
+    mc_byte_t g = cube->max.g - cube->min.g;
+    mc_byte_t b = cube->max.b - cube->min.b;
 
-    for (size_t i = 0; i < NUM_DIM; i++) {
-        diffs.value[i] = cube->max.value[i] - cube->min.value[i];
+    if (r >= g && r >= b) {
+        return DIM_RED;
+    } else if (g >= r && g >= b) {
+        return DIM_GREEN;
+    } else {
+        return DIM_BLUE;
     }
-
-    new = COFindTarget(cube->order, diffs);
-    COSwapTo(cube->order, new, (COrderPixel*) cube->data, cube->size);
-    cube->order = new;
 }
 
 /**
@@ -177,19 +118,31 @@ MCSplit(
     assert(lo);
     assert(hi);
 
-    // Find the median.
-    size_t mid = lo->size >> 1;
-    uint32_t median = QSelect((uint32_t*) lo->data, lo->size, mid);
+    // Determine which color has the biggest range.
+    color_dim_t dim = MCCalculateBiggestDimension(lo);
 
-    // Partition across the median.
-    size_t plo, phi;
-    Partition((uint32_t*) lo->data, lo->size, median, &plo, &phi);
-    assert((plo <= mid) && (mid <= phi));
+    // Partition across the median in the selected dimension.
+    size_t mid = 0;
+    switch (dim) {
+        case DIM_RED:
+            mid = MedianPartition(lo->r, lo->g, lo->b, lo->size);
+            break;
+        case DIM_GREEN:
+            mid = MedianPartition(lo->g, lo->r, lo->b, lo->size);
+            break;
+        case DIM_BLUE:
+            mid = MedianPartition(lo->b, lo->g, lo->r, lo->size);
+            break;
+        default:
+            assert(0);
+    }
 
     // Split the cubes by size.
     *hi = *lo;
     lo->size = mid + 1;
-    hi->data += lo->size;
+    hi->r += lo->size;
+    hi->g += lo->size;
+    hi->b += lo->size;
     hi->size -= lo->size;
 
     // Shrink the value range of the cubes.
@@ -197,16 +150,64 @@ MCSplit(
     MCShrinkCube(hi);
 }
 
-static MCTriplet
+static DTPixel
 MCCubeAverage(
     MCCube *cube
 ) {
-    COSwapTo(cube->order, CO_RGB, (COrderPixel*) &cube->min, 1);
-    COSwapTo(cube->order, CO_RGB, (COrderPixel*) &cube->max, 1);
+    return (DTPixel) {
+        .r = (cube->max.r + cube->min.r) >> 1,
+        .g = (cube->max.g + cube->min.g) >> 1,
+        .b = (cube->max.b + cube->min.b) >> 1
+    };
+}
 
-    return MCTripletMake(
-        (cube->max.value[0] + cube->min.value[0]) / 2,
-        (cube->max.value[1] + cube->min.value[1]) / 2,
-        (cube->max.value[2] + cube->min.value[2]) / 2
-    );
+DTPalette *
+MCQuantizeData(
+    SplitImage *img,
+    MCWorkspace *ws
+) {
+    assert(img);
+    assert(ws);
+
+    size_t size = img->w * img->h;
+
+    /* first cube */
+    ws->cubes[0] = (MCCube) {
+       .r = img->r,
+       .g = img->g,
+       .b = img->b,
+       .size = size
+    };
+    MCShrinkCube(ws->cubes);
+
+    /* remaining cubes */
+    size_t parentIndex = 0;
+    int iLevel = 1; /* iteration level */
+    size_t offset;
+    MCCube *parentCube;
+    while (iLevel <= ws->level)
+    {
+        // Partition the cube across the median.
+        parentCube = &ws->cubes[parentIndex];
+        offset = ws->palette->size >> iLevel;
+        MCSplit(parentCube, &ws->cubes[parentIndex + offset]);
+
+        /* check if iLevel must be increased by analysing if the next
+         * offset is within palette size boundary. If not, change level
+         * and reset parent to 0. If it is, set next element as parent. */
+        if (parentIndex + (offset * 2) < ws->palette->size) {
+            parentIndex = parentIndex + (offset * 2);
+        } else {
+            parentIndex = 0;
+            iLevel++;
+        }
+    }
+
+    /* find final cube averages */
+    for (size_t i = 0; i < ws->palette->size; i++)
+        ws->palette->colors[i] = MCCubeAverage(&ws->cubes[i]);
+
+    DTPalette *ret = ws->palette;
+    ws->palette = NULL;
+    return ret;
 }

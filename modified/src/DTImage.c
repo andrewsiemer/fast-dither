@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <DTImage.h>
+#include <XMalloc.h>
 #include <png.h>
 
 #define HEADER_LEN 8
@@ -42,9 +43,10 @@ CreateImageFromFile(char *filename)
     }
 
     /* initialize image and read pixels */
-    DTImage *image = malloc(sizeof(DTImage));
+    DTImage *image = XMalloc(sizeof(DTImage));
     image->type = type;
     if (ReadDataFromFile(image, file)) {
+        free(image);
         fprintf(stderr, "Failed to read image content.\n");
         return NULL;
     }

@@ -181,10 +181,9 @@ ReadPaletteFromStdin(size_t size)
 DTPalettePacked *
 QuantizedPaletteForImage(DTImage *image, size_t size)
 {
-    MCTriplet *data = XMalloc(sizeof(MCTriplet) * image->resolution);
-    DTPalettePacked *palette = XMalloc(sizeof(DTPalettePacked));
+    SplitImage *img = CreateSplitImage(image);
     MCWorkspace *ws = MCWorkspaceMake((mc_byte_t) (double) log2(size));
-    MCTriplet *colors;
+    DTPalettePacked *palette = XMalloc(sizeof(DTPalettePacked));
 
     palette->rgb = XMalloc(size*sizeof(int)*3);
     palette->size = size;
@@ -192,27 +191,21 @@ QuantizedPaletteForImage(DTImage *image, size_t size)
     unsigned long long ts1, ts2;
     TIMESTAMP(ts1);
 
-    for (size_t i = 0; i < image->resolution; i++)
-        data[i] = MCTripletMake(
-            image->pixels[i].r,
-            image->pixels[i].g,
-            image->pixels[i].b
-        );
-
-    colors = MCQuantizeData(data, image->resolution, ws);
+    DTPalette *mc = MCQuantizeData(img, ws);
 
     for (size_t i = 0; i < palette->size; i++) {
-        palette->rgb[i] = colors[i].value[0];
-        palette->rgb[palette->size+i] = colors[i].value[1];
-        palette->rgb[palette->size*2+i] = colors[i].value[2];
+        palette->rgb[i] = mc->colors[i].r;
+        palette->rgb[palette->size+i] = mc->colors[i].g;
+        palette->rgb[palette->size*2+i] = mc->colors[i].b;
     }
 
     TIMESTAMP(ts2);
     TIME_REPORT("MCQuantization", ts1, ts2);
 
     MCWorkspaceDestroy(ws);
-    XFree(data);
-    XFree(colors);
+    DestroySplitImage(img);
+    XFree(mc->colors);
+    XFree(mc);
 
     return palette;
 }
