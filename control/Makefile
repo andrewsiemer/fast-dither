@@ -30,7 +30,7 @@ LIBS =
 
 # Flags for use with the compiler. Currently assumes clang.
 CFLAGS =\
-	-std=c99 -Wall -Werror -Wno-padded -Wno-covered-switch-default\
+	-std=c99 -Wall -Werror -Weverything -Wno-padded -Wno-covered-switch-default\
 	-mavx -mavx2 -mfma -O3\
 	$(addprefix -I,$(wildcard $(INC)))
 

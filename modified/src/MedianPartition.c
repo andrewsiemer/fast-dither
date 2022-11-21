@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+#include <emmintrin.h>
 #include <immintrin.h>
 
 #include <UtilMacro.h>
