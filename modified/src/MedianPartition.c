@@ -29,6 +29,14 @@ __attribute__((aligned (32))) static const uint8_t shuffle_adjust[32] = {
     0, 0, 0, 0, 0, 0, 0, 0, 8, 8, 8, 8, 8, 8, 8, 8
 };
 
+/// @brief Used to adjust the signed cmp_epi8 to unsigned.
+__attribute__((aligned (32))) static const uint8_t cmp_adjust[32] = {
+    128, 128, 128, 128, 128, 128, 128, 128,
+    128, 128, 128, 128, 128, 128, 128, 128,
+    128, 128, 128, 128, 128, 128, 128, 128,
+    128, 128, 128, 128, 128, 128, 128, 128
+};
+
 /// @brief Loads a mask which sets the low 128-bits to one.
 __attribute__((aligned (32))) static const uint8_t half_mask[32] = {
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -258,7 +266,7 @@ do {\
     /* high-high and low-low vector for each vector */\
     do {\
         register __m256i _roll_shuffle;\
-        _roll_shuffle = _mm256_load_si256((__m256i*) rrl_shuffle[_hic]);\
+        _roll_shuffle = _mm256_load_si256((__m256i*) rrl_shuffle[_loc]);\
         \
         _a1_hi = _mm256_permute2x128_si256(a1, a1, 0x11);\
         _a2_hi = _mm256_permute2x128_si256(a2, a2, 0x11);\
@@ -360,6 +368,20 @@ do {\
     bc = _hvc_tmp;\
 } while (0)
 
+static void
+print_vec(
+    __m256i v
+) {
+    __attribute__((aligned(32))) uint8_t vec[32];
+    _mm256_store_si256((__m256i*) vec, v);
+    printf("{");
+    for (int i = 0; i < 32; i++) {
+        if (i > 0) { printf(", "); }
+        printf("%u", vec[i]);
+    }
+    printf("{\n");
+}
+
 /**
  * @brief Performs a partition on the given arrays where the arrays are 32
  *        byte aligned and the size is a multiple of 32.
@@ -379,7 +401,7 @@ AlignPartition(
     size_t size,
     uint8_t pivot
 ) {
-    assert(size > 1);
+    assert(size > 0);
 
     // Set up the pivot vector.
     union {
@@ -387,6 +409,8 @@ AlignPartition(
         uint8_t p[4];
     } crime = { .p = { pivot, pivot, pivot, pivot } };
     register __m256i pivots = _mm256_castps_si256(_mm256_broadcast_ss(&crime.f));
+    register __m256i tmp = _mm256_load_si256((__m256i*) cmp_adjust);
+    pivots = _mm256_add_epi8(pivots, tmp);
 
     // Load and sort the first chunk. This is done here to avoid repeat work.
     size_t lo = 0, hi = size - 1;
@@ -396,8 +420,23 @@ AlignPartition(
     a1 = _mm256_load_si256(&ch1[lo]);
     a2 = _mm256_load_si256(&ch2[lo]);
     a3 = _mm256_load_si256(&ch3[lo]);
-    amask = _mm256_cmpgt_epi8(a1, pivots);
+    amask = _mm256_load_si256((__m256i*) cmp_adjust);
+    amask = _mm256_add_epi8(amask, a1);
+    amask = _mm256_cmpgt_epi8(amask, pivots);
+    printf("Pre-part (pivot = %u): ", pivot);
+    print_vec(a1);
+    printf("Comparison mask: ");
+    print_vec(amask);
+    printf("pivots: ");
+    print_vec(pivots);
+    size_t tmp1, tmp2;
+    ARGMSORT2X16(amask, a1, a2, a3, tmp1, tmp2);
+    printf("post-16part (loc = %zu, hic = %zu): ", tmp1, tmp2);
+    print_vec(a1);
     ARGMSORT1X32(amask, a1, a2, a3, ac);
+    printf("post-part: ");
+    print_vec(a1);
+    printf("\n\n");
 
     // Perform the partition for all except the last step.
     while (hi > lo) {
@@ -407,7 +446,9 @@ AlignPartition(
         b1 = _mm256_load_si256(&ch1[next]);
         b2 = _mm256_load_si256(&ch2[next]);
         b3 = _mm256_load_si256(&ch3[next]);
-        bmask = _mm256_cmpgt_epi8(b1, pivots);
+        bmask = _mm256_load_si256((__m256i*) cmp_adjust);
+        bmask = _mm256_add_epi8(bmask, b1);
+        bmask = _mm256_cmpgt_epi8(bmask, pivots);
         ARGMSORT1X32(bmask, b1, b2, b3, bc);
 
         // Sort across both chunks.
@@ -475,7 +516,7 @@ Partition(
 
     /* Partition the unaligned parts. */
 
-    for (size_t lo = 0; lo < pre_align;) {
+    for (size_t lo = 0; (lo < pre_align) && (lo < bound);) {
         if (ch1[lo] > pivot) {
             bound--;
             SWAP(ch1[lo], ch1[bound]);
@@ -486,15 +527,14 @@ Partition(
         }
     }
 
-    for (size_t hi_ofst = size - bound; hi_ofst < post_align;) {
-        size_t hi = size - hi_ofst - 1;
+    for (size_t hi = size - 1; (hi > (size - post_align)) && (hi > bound);) {
         if (ch1[hi] <= pivot) {
             SWAP(ch1[hi], ch1[bound]);
             SWAP(ch2[hi], ch2[bound]);
             SWAP(ch3[hi], ch3[bound]);
             bound++;
         } else {
-            hi_ofst++;
+            hi--;
         }
     }
 
@@ -524,23 +564,34 @@ QSelect(
     assert(size > 0);
     assert(k < size);
 
-    while (size > 1) {
+    // Bound the values of pivots we can choose to ensure termination, since
+    // partition may not actually divide the array if, e.g., all the elements
+    // are the same.
+    uint8_t min_pivot = 0;
+    uint8_t max_pivot = (uint8_t) ~0u;
+
+    while ((size > 1) && (min_pivot < max_pivot)) {
         // Get our pivot. Random is "good enough" for O(n) in most cases.
-        size_t pivot_idx = ((size_t) (unsigned int) rand()) % size;
-        uint8_t pivot = ch1[pivot_idx];
+        //size_t pivot_idx = ((size_t) (unsigned int) rand()) % size;
+        uint8_t pivot = min_pivot + ((max_pivot - min_pivot) >> 1);//ch1[pivot_idx];
+        //pivot = MIN(pivot, max_pivot);
+        //pivot = MAX(pivot, min_pivot);
 
         // Partition across our pivot.
         size_t mid = Partition(ch1, ch2, ch3, size, pivot);
-        assert(mid < size);
+        assert(mid <= size);
 
-        if (k <= mid) {
+        if (k < mid) {
             size = mid;
-        } else if (k > mid) {
+            max_pivot = pivot - 1;
+        } else if (k >= mid) {
+            assert(mid < size);
             ch1 = &ch1[mid];
             ch2 = &ch2[mid];
             ch3 = &ch3[mid];
             size -= mid;
             k -= mid;
+            min_pivot = pivot + 1;
         }
     }
 
@@ -560,6 +611,7 @@ MedianPartition(
 
     // Partition across the median.
     size_t lo_size = Partition(ch1, ch2, ch3, size, median);
+    assert(lo_size > 0);
 
     // Partition again across (median - 1) to force all median values to the
     // middle of the array.
