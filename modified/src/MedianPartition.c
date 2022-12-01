@@ -197,9 +197,9 @@ do {\
         a1 = _mm256_permute2x128_si256(a1, a1, 0x00);\
         a2 = _mm256_permute2x128_si256(a2, a2, 0x00);\
         a3 = _mm256_permute2x128_si256(a3, a3, 0x00);\
-        _a1_hi = _mm256_shuffle_epi8(_a1_hi, _roll_shuffle);\
-        _a2_hi = _mm256_shuffle_epi8(_a2_hi, _roll_shuffle);\
-        _a3_hi = _mm256_shuffle_epi8(_a3_hi, _roll_shuffle);\
+        /*_a1_hi = _mm256_shuffle_epi8(_a1_hi, _roll_shuffle);*/\
+        /*_a2_hi = _mm256_shuffle_epi8(_a2_hi, _roll_shuffle);*/\
+        /*_a3_hi = _mm256_shuffle_epi8(_a3_hi, _roll_shuffle);*/\
     } while (0);\
     \
     /* Use the mask and rolled high-high vector to insert the upper half */\
@@ -301,7 +301,7 @@ print_vec(
         if (i > 0) { printf(", "); }
         printf("%u", vec[i]);
     }
-    printf("{\n");
+    printf("}\n");
 }
 
 /**

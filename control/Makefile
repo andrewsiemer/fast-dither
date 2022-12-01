@@ -30,14 +30,19 @@ LIBS =
 
 # Flags for use with the compiler. Currently assumes clang.
 CFLAGS =\
-	-std=c99 -Wall -Werror -Weverything -Wno-padded -Wno-covered-switch-default\
-	-mavx -mavx2 -mfma -O3\
+	-std=c99 -Wall -Werror -mavx -mavx2 -mfma -O0 -ggdb\
 	$(addprefix -I,$(wildcard $(INC)))
+
+include config.mk
+
+# Flags which only work for clang.
+ifeq ($(CC),clang)
+CFLAGS += -Weverything -Wno-padded -Wno-covered-switch-default\
+          -Wno-unused-macros
+endif
 
 # Static analysis program. We just use clang.
 STATIC_ANALYSIS = $(CC) $(CFLAGS) --analyze -Xanalyzer -analyzer-output=text
-
-include config.mk
 
 # Fix the object list by making it relative to the source code root.
 OBJECTS := $(addprefix $(SRC_ROOT)/,$(OBJECTS))
@@ -64,7 +69,9 @@ $(ASM_OBJECTS): %.o: %.S
 	$(CC) $(CFLAGS) -DASSEMBLER -c -MD -MP -MF $(@:.o=.d) -MT $@ -o $@ $(@:.o=.S)
 
 $(C_OBJECTS): %.o: %.c
+ifeq ($(CC),clang)
 	$(STATIC_ANALYSIS) $(@:.o=.c)
+endif
 	$(CC) $(CFLAGS) -c -MD -MP -MF $(@:.o=.d) -MT $@ -o $@ $(@:.o=.c)
 
 $(TARGET): $(OBJECTS)
