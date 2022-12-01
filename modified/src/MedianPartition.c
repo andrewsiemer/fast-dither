@@ -356,17 +356,9 @@ AlignPartition(
     amask = _mm256_load_si256((__m256i*) cmp_adjust);
     amask = _mm256_add_epi8(amask, a1);
     amask = _mm256_cmpgt_epi8(amask, pivots);
-
-    printf("Pre-part (pivot = %u): ", pivot);
-    print_vec(a1);
-
     ARGMSORT1X32(amask, a1, a2, a3, ac);
 
-    printf("post-part: ");
-    print_vec(a1);
-
     // Perform the partition for all except the last step.
-    size_t it = 0;
     while (hi > lo) {
         // Load in and sort new chunk.
         uint64_t bc = 0;
@@ -379,21 +371,8 @@ AlignPartition(
         bmask = _mm256_cmpgt_epi8(bmask, pivots);
         ARGMSORT1X32(bmask, b1, b2, b3, bc);
 
-        if (it == 2) {
-            printf("pre-lo (cnt = %zu): ", ac);
-            print_vec(a1);
-            printf("pre-hi (cnt = %zu): ", bc);
-            print_vec(b1);
-        }
         // Sort across both chunks.
         ARGMSORT2X32(ac, a1, a2, a3, bc, b1, b2, b3);
-        if (it == 2) {
-            printf("lo (cnt = %zu): ", ac);
-            print_vec(a1);
-            printf("hi (cnt = %zu): ", bc);
-            print_vec(b1);
-        }
-        it++;
 
         // Determine which side is full.
         if (ac == 0) {
@@ -408,7 +387,6 @@ AlignPartition(
             a3 = b3;
             next = ++lo;
         } else {
-            assert(bc == 32);
             // bmask must be filled with ones, so store those values.
             _mm256_store_si256(&ch1[hi], b1);
             _mm256_store_si256(&ch2[hi], b2);
@@ -455,14 +433,6 @@ Partition(
 
         bound = (bound * 32) + pre_align;
         while ((bound < size) && (ch1[bound] <= pivot)) bound++;
-
-        // SLOW CHECKING!
-        for (size_t i = pre_align; i < (size - post_align); i++) {
-            if (!(((ch1[i] <= pivot) && (i < bound)) || ((ch1[i] > pivot) && (i >= bound)))) {
-                printf("At index i = %zu, found value %u but bound is %zu and pivot is %u\n", i, ch1[i], bound, pivot);
-                abort();
-            }
-        }
     }
 
     /* Partition the unaligned parts. */
@@ -486,14 +456,6 @@ Partition(
             bound++;
         } else {
             hi--;
-        }
-    }
-
-    // SLOW CHECKING!
-    for (size_t i = 0; i < size; i++) {
-        if (!(((ch1[i] <= pivot) && (i < bound)) || ((ch1[i] > pivot) && (i >= bound)))) {
-            printf("At index i = %zu, found value %u but bound is %zu and pivot is %u\n", i, ch1[i], bound, pivot);
-            abort();
         }
     }
 
@@ -529,19 +491,15 @@ QSelect(
     uint8_t min_pivot = 0;
     uint8_t max_pivot = (uint8_t) ~0u;
 
-    printf("-----------------QUICK SELECT-------------------\n");
     while ((size > 1) && (min_pivot < max_pivot)) {
         // Get our pivot. Random is "good enough" for O(n) in most cases.
         size_t pivot_idx = ((size_t) (unsigned int) rand()) % size;
         uint8_t pivot = ch1[pivot_idx];
-        printf("Random = %u, max = %u, min = %u, ", pivot, max_pivot, min_pivot);
         pivot = MIN(pivot, max_pivot);
         pivot = MAX(pivot, min_pivot);
-        printf("pivot = %u\n", pivot);
 
         // Partition across our pivot.
         size_t mid = Partition(ch1, ch2, ch3, size, pivot);
-        printf("Completed partition with size = %zu, mid = %zu\n\n", size, mid);
         assert(mid <= size);
 
         if (k < mid) {
@@ -557,7 +515,6 @@ QSelect(
             min_pivot = pivot + 1;
         }
     }
-    printf("------------------------------------------------\n\n");
 
     return ch1[0];
 }
@@ -573,7 +530,6 @@ MedianPartition(
     size_t mid = size >> 1;
     uint8_t median = QSelect(ch1, ch2, ch3, size, mid);
 
-    printf("---------------MEDIAN PART---------------------\n");
     // Partition across the median.
     size_t lo_size = Partition(ch1, ch2, ch3, size, median);
     assert(lo_size > 0);
@@ -583,7 +539,6 @@ MedianPartition(
     if (median > 0) {
         Partition(ch1, ch2, ch3, lo_size, median - 1);
     }
-    printf("------------------------------------------------\n\n");
 
     return mid;
 }

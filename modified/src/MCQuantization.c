@@ -15,6 +15,7 @@
 
 #include <MedianPartition.h>
 #include <XMalloc.h>
+#include <UtilMacro.h>
 
 #define NUM_DIM 3u
 
@@ -123,19 +124,27 @@ MCSplit(
 
     // Partition across the median in the selected dimension.
     size_t mid = 0;
+    unsigned long long ts1, ts2;
     switch (dim) {
         case DIM_RED:
+            TIMESTAMP(ts1);
             mid = MedianPartition(lo->r, lo->g, lo->b, lo->size);
+            TIMESTAMP(ts2);
             break;
         case DIM_GREEN:
+            TIMESTAMP(ts1);
             mid = MedianPartition(lo->g, lo->r, lo->b, lo->size);
+            TIMESTAMP(ts2);
             break;
         case DIM_BLUE:
+            TIMESTAMP(ts1);
             mid = MedianPartition(lo->b, lo->g, lo->r, lo->size);
+            TIMESTAMP(ts2);
             break;
         default:
             assert(0);
     }
+    TIME_REPORT("Median Partition", ts1, ts2);
 
     // Split the cubes by size.
     *hi = *lo;
