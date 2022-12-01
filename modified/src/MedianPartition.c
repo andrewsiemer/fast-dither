@@ -39,10 +39,10 @@ __attribute__((aligned (32))) static const uint8_t cmp_adjust[32] = {
 
 /// @brief Loads a mask which sets the low 128-bits to one.
 __attribute__((aligned (32))) static const uint8_t half_mask[32] = {
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
     0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
 };
 
 /// @brief Masks to set all bits in a register based on the index bit.
@@ -379,7 +379,7 @@ AlignPartition(
         bmask = _mm256_cmpgt_epi8(bmask, pivots);
         ARGMSORT1X32(bmask, b1, b2, b3, bc);
 
-        if (it == 1) {
+        if (it == 2) {
             printf("pre-lo (cnt = %zu): ", ac);
             print_vec(a1);
             printf("pre-hi (cnt = %zu): ", bc);
@@ -387,7 +387,7 @@ AlignPartition(
         }
         // Sort across both chunks.
         ARGMSORT2X32(ac, a1, a2, a3, bc, b1, b2, b3);
-        if (it == 1) {
+        if (it == 2) {
             printf("lo (cnt = %zu): ", ac);
             print_vec(a1);
             printf("hi (cnt = %zu): ", bc);
@@ -402,6 +402,7 @@ AlignPartition(
             _mm256_store_si256(&ch1[lo], a1);
             _mm256_store_si256(&ch2[lo], a2);
             _mm256_store_si256(&ch3[lo], a3);
+            ac = bc;
             a1 = b1;
             a2 = b2;
             a3 = b3;
@@ -477,7 +478,7 @@ Partition(
         }
     }
 
-    for (size_t hi = size - 1; (hi > (size - post_align)) && (hi > bound);) {
+    for (size_t hi = size - 1; (hi >= (size - post_align)) && (hi >= bound);) {
         if (ch1[hi] <= pivot) {
             SWAP(ch1[hi], ch1[bound]);
             SWAP(ch2[hi], ch2[bound]);
@@ -490,7 +491,10 @@ Partition(
 
     // SLOW CHECKING!
     for (size_t i = 0; i < size; i++) {
-        assert(((ch1[i] <= pivot) && (i < bound)) || ((ch1[i] > pivot) && (i >= bound)));
+        if (!(((ch1[i] <= pivot) && (i < bound)) || ((ch1[i] > pivot) && (i >= bound)))) {
+            printf("At index i = %zu, found value %u but bound is %zu and pivot is %u\n", i, ch1[i], bound, pivot);
+            abort();
+        }
     }
 
     return bound;
