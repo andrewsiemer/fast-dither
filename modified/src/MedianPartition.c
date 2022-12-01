@@ -197,9 +197,9 @@ do {\
         a1 = _mm256_permute2x128_si256(a1, a1, 0x00);\
         a2 = _mm256_permute2x128_si256(a2, a2, 0x00);\
         a3 = _mm256_permute2x128_si256(a3, a3, 0x00);\
-        /*_a1_hi = _mm256_shuffle_epi8(_a1_hi, _roll_shuffle);*/\
-        /*_a2_hi = _mm256_shuffle_epi8(_a2_hi, _roll_shuffle);*/\
-        /*_a3_hi = _mm256_shuffle_epi8(_a3_hi, _roll_shuffle);*/\
+        _a1_hi = _mm256_shuffle_epi8(_a1_hi, _roll_shuffle);\
+        _a2_hi = _mm256_shuffle_epi8(_a2_hi, _roll_shuffle);\
+        _a3_hi = _mm256_shuffle_epi8(_a3_hi, _roll_shuffle);\
     } while (0);\
     \
     /* Use the mask and rolled high-high vector to insert the upper half */\
@@ -231,62 +231,73 @@ do {\
     do {\
         register __m256i _b1_lo, _b2_lo, _b3_lo, _maybe_blend;\
         register __m256i _roll_mask, _tmp, _rtmp;\
-        size_t _hi_sel = (ac >> 4) & 1;\
-        size_t _hic = (ac) & 0xF;\
+        size_t _hi_sel = ((ac) >> 4) > 0;\
+        size_t _hic = ((ac) & 0xF) + (((ac) >> 1) & 0x10);\
         \
-        /* Generate the 32-byte roll blending mask and begin preparing the */\
-        /* 64-byte blending mask, which is a 32-byte set mask shifted by ac */\
-        _b_blend = _mm256_load_si256((__m256i*) srl_blend[_hic]);\
+        /* Begin preparing the 64-byte blending masks. */\
         _rtmp = _mm256_load_si256((__m256i*) half_mask);\
-        _tmp = _mm256_load_si256((__m256i*) &maybe_not[_hi_sel]);\
         _a_blend = _mm256_setzero_si256();\
         _a_blend = _mm256_cmpeq_epi8(_a_blend, _a_blend);\
+        \
+        /* Generate the 32-byte roll blending mask. */\
+        _b_blend = _mm256_load_si256((__m256i*) srl_blend[_hic]);\
+        _tmp = _mm256_load_si256((__m256i*) &maybe_not[_hi_sel]);\
         _roll_mask = _mm256_xor_si256(_tmp, _b_blend);\
         \
+        /* Finish creating the final blending mask by making an (ac % 16) */\
+        /* shifted set vector and an (ac % 16) + 16 shifted vector and */\
+        /* selecting the vector using the 16ths place in ac. */\
+        _maybe_blend = _mm256_permute2x128_si256(_rtmp, _b_blend, 0x03);\
+        _b_blend = _mm256_permute2x128_si256(_rtmp, _b_blend, 0x31);\
+        \
         /* Generate the b vectors to be 16-byte rolled and blended. */\
-        /* Also finish creating the final blending mask. */\
         _b1_lo = _mm256_permute2x128_si256(b1, b1, 0x00);\
         _b2_lo = _mm256_permute2x128_si256(b2, b2, 0x00);\
         _b3_lo = _mm256_permute2x128_si256(b3, b3, 0x00);\
         b1 = _mm256_permute2x128_si256(b1, b1, 0x11);\
         b2 = _mm256_permute2x128_si256(b2, b2, 0x11);\
         b3 = _mm256_permute2x128_si256(b3, b3, 0x11);\
-        _tmp = _mm256_load_si256((__m256i*) &maybe_not[!_hi_sel]);\
-        _b_blend = _mm256_permute2x128_si256(_rtmp, _b_blend, 0x20);\
-        _maybe_blend = _mm256_permute2x128_si256(_rtmp, _b_blend, 0x12);\
-        _b_blend = _mm256_and_si256(_b_blend, _tmp);\
-        _tmp = _mm256_load_si256((__m256i*) &maybe_not[_hi_sel]);\
+        \
+        /* Create the 16-byte roll shuffle mask. */\
+        _rtmp = _mm256_load_si256((__m256i*) rrl_shuffle[_hic]);\
+        \
+        /* Select the blend vector */\
         _maybe_blend = _mm256_and_si256(_maybe_blend, _tmp);\
+        _tmp = _mm256_xor_si256(_tmp, _a_blend);\
+        _b_blend = _mm256_and_si256(_b_blend, _tmp);\
         _b_blend = _mm256_or_si256(_b_blend, _maybe_blend);\
         _a_blend = _mm256_xor_si256(_a_blend, _b_blend);\
         \
-        /* Create the 16-byte roll shuffle mask. */\
-        _tmp = _mm256_load_si256((__m256i*) rrl_shuffle[_hic]);\
-        \
         /* Roll the b vectors by 16-byte rolling each one and then blending */\
         /* with the roll mask */\
-        b1 = _mm256_shuffle_epi8(b1, _tmp);\
-        b2 = _mm256_shuffle_epi8(b2, _tmp);\
-        b3 = _mm256_shuffle_epi8(b3, _tmp);\
-        _b1_lo = _mm256_shuffle_epi8(_b1_lo, _tmp);\
-        _b2_lo = _mm256_shuffle_epi8(_b2_lo, _tmp);\
-        _b3_lo = _mm256_shuffle_epi8(_b3_lo, _tmp);\
+        b1 = _mm256_shuffle_epi8(b1, _rtmp);\
+        b2 = _mm256_shuffle_epi8(b2, _rtmp);\
+        b3 = _mm256_shuffle_epi8(b3, _rtmp);\
+        _b1_lo = _mm256_shuffle_epi8(_b1_lo, _rtmp);\
+        _b2_lo = _mm256_shuffle_epi8(_b2_lo, _rtmp);\
+        _b3_lo = _mm256_shuffle_epi8(_b3_lo, _rtmp);\
         b1 = _mm256_blendv_epi8(_b1_lo, b1, _roll_mask);\
         b2 = _mm256_blendv_epi8(_b2_lo, b2, _roll_mask);\
         b3 = _mm256_blendv_epi8(_b3_lo, b3, _roll_mask);\
     } while (0);\
     \
-    /* Sort the a and b vectors across each other. */\
-    a1 = _mm256_blendv_epi8(a1, b1, _a_blend);\
-    a2 = _mm256_blendv_epi8(a2, b2, _a_blend);\
-    a3 = _mm256_blendv_epi8(a3, b3, _a_blend);\
-    b1 = _mm256_blendv_epi8(a1, b1, _b_blend);\
-    b2 = _mm256_blendv_epi8(a2, b2, _b_blend);\
-    b3 = _mm256_blendv_epi8(a3, b3, _b_blend);\
+    do {\
+        /* Sort the a and b vectors across each other. */\
+        register __m256i _a1_tmp, _a2_tmp, _a3_tmp;\
+        _a1_tmp = _mm256_blendv_epi8(a1, b1, _a_blend);\
+        _a2_tmp = _mm256_blendv_epi8(a2, b2, _a_blend);\
+        _a3_tmp = _mm256_blendv_epi8(a3, b3, _a_blend);\
+        b1 = _mm256_blendv_epi8(a1, b1, _b_blend);\
+        b2 = _mm256_blendv_epi8(a2, b2, _b_blend);\
+        b3 = _mm256_blendv_epi8(a3, b3, _b_blend);\
+        a1 = _a1_tmp;\
+        a2 = _a2_tmp;\
+        a3 = _a3_tmp;\
+    } while (0);\
     \
     /* Update the high-value counts. */\
     uint64_t _hvc_tmp = MIN(32, (ac) + (bc));\
-    ac = MAX(0, ((ac) + (bc)) - 32);\
+    ac = (uint64_t) MAX((int64_t)0, (int64_t) (((ac) + (bc)) - 32));\
     bc = _hvc_tmp;\
 } while (0)
 
@@ -345,40 +356,44 @@ AlignPartition(
     amask = _mm256_load_si256((__m256i*) cmp_adjust);
     amask = _mm256_add_epi8(amask, a1);
     amask = _mm256_cmpgt_epi8(amask, pivots);
+
     printf("Pre-part (pivot = %u): ", pivot);
     print_vec(a1);
-    printf("Comparison mask: ");
-    print_vec(amask);
-    printf("pivots: ");
-    print_vec(pivots);
-    size_t tmp1, tmp2;
-    ARGMSORT2X16(amask, a1, a2, a3, tmp1, tmp2);
-    printf("a_lo (sanity check): ");
-    print_vec(_mm256_permute2x128_si256(a1, a1, 0x00));
-    printf("a_hi (sanity check): ");
-    print_vec(_mm256_permute2x128_si256(a1, a1, 0x11));
-    printf("post-16part (loc = %zu, hic = %zu): ", tmp1, tmp2);
-    print_vec(a1);
+
     ARGMSORT1X32(amask, a1, a2, a3, ac);
+
     printf("post-part: ");
     print_vec(a1);
-    printf("\n\n");
 
     // Perform the partition for all except the last step.
+    size_t it = 0;
     while (hi > lo) {
         // Load in and sort new chunk.
-        uint64_t bc;
+        uint64_t bc = 0;
         register __m256i b1, b2, b3, bmask;
+        bmask = _mm256_load_si256((__m256i*) cmp_adjust);
         b1 = _mm256_load_si256(&ch1[next]);
         b2 = _mm256_load_si256(&ch2[next]);
         b3 = _mm256_load_si256(&ch3[next]);
-        bmask = _mm256_load_si256((__m256i*) cmp_adjust);
         bmask = _mm256_add_epi8(bmask, b1);
         bmask = _mm256_cmpgt_epi8(bmask, pivots);
         ARGMSORT1X32(bmask, b1, b2, b3, bc);
 
+        if (it == 1) {
+            printf("pre-lo (cnt = %zu): ", ac);
+            print_vec(a1);
+            printf("pre-hi (cnt = %zu): ", bc);
+            print_vec(b1);
+        }
         // Sort across both chunks.
         ARGMSORT2X32(ac, a1, a2, a3, bc, b1, b2, b3);
+        if (it == 1) {
+            printf("lo (cnt = %zu): ", ac);
+            print_vec(a1);
+            printf("hi (cnt = %zu): ", bc);
+            print_vec(b1);
+        }
+        it++;
 
         // Determine which side is full.
         if (ac == 0) {
@@ -392,6 +407,7 @@ AlignPartition(
             a3 = b3;
             next = ++lo;
         } else {
+            assert(bc == 32);
             // bmask must be filled with ones, so store those values.
             _mm256_store_si256(&ch1[hi], b1);
             _mm256_store_si256(&ch2[hi], b2);
@@ -438,6 +454,14 @@ Partition(
 
         bound = (bound * 32) + pre_align;
         while ((bound < size) && (ch1[bound] <= pivot)) bound++;
+
+        // SLOW CHECKING!
+        for (size_t i = pre_align; i < (size - post_align); i++) {
+            if (!(((ch1[i] <= pivot) && (i < bound)) || ((ch1[i] > pivot) && (i >= bound)))) {
+                printf("At index i = %zu, found value %u but bound is %zu and pivot is %u\n", i, ch1[i], bound, pivot);
+                abort();
+            }
+        }
     }
 
     /* Partition the unaligned parts. */
@@ -462,6 +486,11 @@ Partition(
         } else {
             hi--;
         }
+    }
+
+    // SLOW CHECKING!
+    for (size_t i = 0; i < size; i++) {
+        assert(((ch1[i] <= pivot) && (i < bound)) || ((ch1[i] > pivot) && (i >= bound)));
     }
 
     return bound;
@@ -496,15 +525,19 @@ QSelect(
     uint8_t min_pivot = 0;
     uint8_t max_pivot = (uint8_t) ~0u;
 
+    printf("-----------------QUICK SELECT-------------------\n");
     while ((size > 1) && (min_pivot < max_pivot)) {
         // Get our pivot. Random is "good enough" for O(n) in most cases.
         size_t pivot_idx = ((size_t) (unsigned int) rand()) % size;
         uint8_t pivot = ch1[pivot_idx];
+        printf("Random = %u, max = %u, min = %u, ", pivot, max_pivot, min_pivot);
         pivot = MIN(pivot, max_pivot);
         pivot = MAX(pivot, min_pivot);
+        printf("pivot = %u\n", pivot);
 
         // Partition across our pivot.
         size_t mid = Partition(ch1, ch2, ch3, size, pivot);
+        printf("Completed partition with size = %zu, mid = %zu\n\n", size, mid);
         assert(mid <= size);
 
         if (k < mid) {
@@ -520,6 +553,7 @@ QSelect(
             min_pivot = pivot + 1;
         }
     }
+    printf("------------------------------------------------\n\n");
 
     return ch1[0];
 }
@@ -535,6 +569,7 @@ MedianPartition(
     size_t mid = size >> 1;
     uint8_t median = QSelect(ch1, ch2, ch3, size, mid);
 
+    printf("---------------MEDIAN PART---------------------\n");
     // Partition across the median.
     size_t lo_size = Partition(ch1, ch2, ch3, size, median);
     assert(lo_size > 0);
@@ -544,6 +579,7 @@ MedianPartition(
     if (median > 0) {
         Partition(ch1, ch2, ch3, lo_size, median - 1);
     }
+    printf("------------------------------------------------\n\n");
 
     return mid;
 }
