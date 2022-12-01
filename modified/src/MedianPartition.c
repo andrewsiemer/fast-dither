@@ -133,6 +133,7 @@ do {\
         __attribute__((aligned(32))) uint64_t _sort8[4];\
         _move_mask.i = _mm256_movemask_epi8(mask);\
         \
+        /* For some reason, this is much faster than popcount */\
         _hi_counts.u = _move_mask.u;\
         _hi_counts.u = (_hi_counts.u & 0x55555555)\
                      + ((_hi_counts.u & 0xAAAAAAAA) >> 1);\
@@ -170,15 +171,23 @@ do {\
 
 /**
  * @brief Sorts 8-bytes chunks of a vector based on the mask in arg.
- * @param mask The mask array to use for sorting.
+ * @param pivots The signed-adjusted pivot vector.
  * @param a1 An array to apply the masks sort to.
  * @param a2 An array to apply the masks sort to.
  * @param a3 An array to apply the masks sort to.
  */
-#define ARGMSORT1X32(mask, a1, a2, a3, count)\
+#define ARGMSORT1X32(pivots, a1, a2, a3, count)\
 do {\
     uint64_t _loc, _hic;\
-    ARGMSORT2X16(mask, a1, a2, a3, _loc, _hic);\
+    \
+    /* 16 sort the array after performing the comparison */\
+    do {\
+        register __m256i _mask;\
+        _mask = _mm256_load_si256((__m256i*) cmp_adjust);\
+        _mask = _mm256_add_epi8(_mask, a1);\
+        _mask = _mm256_cmpgt_epi8(_mask, pivots);\
+        ARGMSORT2X16(_mask, a1, a2, a3, _loc, _hic);\
+    } while (0);\
     \
     register __m256i _move_mask, _a1_hi, _a2_hi, _a3_hi;\
     \
@@ -301,20 +310,6 @@ do {\
     bc = _hvc_tmp;\
 } while (0)
 
-static void
-print_vec(
-    __m256i v
-) {
-    __attribute__((aligned(32))) uint8_t vec[32];
-    _mm256_store_si256((__m256i*) vec, v);
-    printf("{");
-    for (int i = 0; i < 32; i++) {
-        if (i > 0) { printf(", "); }
-        printf("%u", vec[i]);
-    }
-    printf("}\n");
-}
-
 /**
  * @brief Performs a partition on the given arrays where the arrays are 32
  *        byte aligned and the size is a multiple of 32.
@@ -349,27 +344,21 @@ AlignPartition(
     size_t lo = 0, hi = size - 1;
     size_t next = hi;
     uint64_t ac;
-    register __m256i a1, a2, a3, amask;
+    register __m256i a1, a2, a3;
     a1 = _mm256_load_si256(&ch1[lo]);
     a2 = _mm256_load_si256(&ch2[lo]);
     a3 = _mm256_load_si256(&ch3[lo]);
-    amask = _mm256_load_si256((__m256i*) cmp_adjust);
-    amask = _mm256_add_epi8(amask, a1);
-    amask = _mm256_cmpgt_epi8(amask, pivots);
-    ARGMSORT1X32(amask, a1, a2, a3, ac);
+    ARGMSORT1X32(pivots, a1, a2, a3, ac);
 
     // Perform the partition for all except the last step.
     while (hi > lo) {
         // Load in and sort new chunk.
         uint64_t bc = 0;
-        register __m256i b1, b2, b3, bmask;
-        bmask = _mm256_load_si256((__m256i*) cmp_adjust);
+        register __m256i b1, b2, b3;
         b1 = _mm256_load_si256(&ch1[next]);
         b2 = _mm256_load_si256(&ch2[next]);
         b3 = _mm256_load_si256(&ch3[next]);
-        bmask = _mm256_add_epi8(bmask, b1);
-        bmask = _mm256_cmpgt_epi8(bmask, pivots);
-        ARGMSORT1X32(bmask, b1, b2, b3, bc);
+        ARGMSORT1X32(pivots, b1, b2, b3, bc);
 
         // Sort across both chunks.
         ARGMSORT2X32(ac, a1, a2, a3, bc, b1, b2, b3);
