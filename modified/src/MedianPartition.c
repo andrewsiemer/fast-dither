@@ -3,6 +3,10 @@
  * @author Andrew Spaulding (aspauldi)
  * @brief Exposes a median partitioning function for multi-channel arrays.
  * @bug No known bugs.
+ *
+ * Some notes:
+ *     - Blendv sucks on our machine, so we use and, andnot, and or to get
+ *       the same work done in half the time.
  */
 
 #undef NDEBUG
@@ -174,32 +178,40 @@ do {\
     uint64_t _loc, _hic;\
     ARGMSORT2X16(pivots, adjust, a1, a2, a3, _loc, _hic);\
     \
-    register __m256i _move_mask, _a1_hi, _a2_hi, _a3_hi, _roll_shuffle;\
+    register __m256i _tmp1, _tmp2, _tmp3;\
+    register __m256i _a1_hi, _a2_hi, _a3_hi, _roll_shuffle;\
     \
     /* Create a mask to use to blend the lo and hi vectors. */\
-    _move_mask = _mm256_load_si256((__m256i*) srl_blend[_loc]);\
     _roll_shuffle = _mm256_load_si256((__m256i*) rrl_shuffle[_loc]);\
     \
     /* Roll the high vectors by the high count value, then create a */\
     /* high-high and low-low vector for each vector */\
-    _a1_hi = _mm256_permute2x128_si256(a1, a1, 0x11);\
-    _a2_hi = _mm256_permute2x128_si256(a2, a2, 0x11);\
-    _a3_hi = _mm256_permute2x128_si256(a3, a3, 0x11);\
-    a1 = _mm256_permute2x128_si256(a1, a1, 0x00);\
-    a2 = _mm256_permute2x128_si256(a2, a2, 0x00);\
-    a3 = _mm256_permute2x128_si256(a3, a3, 0x00);\
+    _a1_hi = _mm256_permute2x128_si256(a1, a1, 0x01);\
+    _a2_hi = _mm256_permute2x128_si256(a2, a2, 0x01);\
+    _a3_hi = _mm256_permute2x128_si256(a3, a3, 0x01);\
+    _tmp1 = _mm256_blend_epi32(a1, _a1_hi, 0x0F);\
+    a1 = _mm256_blend_epi32(_a1_hi, a1, 0x0F);\
+    _tmp2 = _mm256_blend_epi32(a2, _a2_hi, 0x0F);\
+    a2 = _mm256_blend_epi32(_a2_hi, a2, 0x0F);\
+    _tmp3 = _mm256_blend_epi32(a3, _a3_hi, 0x0F);\
+    a3 = _mm256_blend_epi32(_a3_hi, a3, 0x0F);\
+    _a1_hi = _tmp1;\
+    _a2_hi = _tmp2;\
+    _a3_hi = _tmp3;\
+    \
+    _tmp1 = _mm256_load_si256((__m256i*) srl_blend[_loc]);\
     _a1_hi = _mm256_shuffle_epi8(_a1_hi, _roll_shuffle);\
     _a2_hi = _mm256_shuffle_epi8(_a2_hi, _roll_shuffle);\
     _a3_hi = _mm256_shuffle_epi8(_a3_hi, _roll_shuffle);\
     \
     /* Use the mask and rolled high-high vector to insert the upper half */\
     /* of each vector in between the low halfs low and high values. */\
-    a1 = _mm256_andnot_si256(_move_mask, a1);\
-    _a1_hi = _mm256_and_si256(_a1_hi, _move_mask);\
-    a2 = _mm256_andnot_si256(_move_mask, a1);\
-    _a2_hi = _mm256_and_si256(_a2_hi, _move_mask);\
-    a3 = _mm256_andnot_si256(_move_mask, a1);\
-    _a3_hi = _mm256_and_si256(_a3_hi, _move_mask);\
+    a1 = _mm256_andnot_si256(_tmp1, a1);\
+    _a1_hi = _mm256_and_si256(_a1_hi, _tmp1);\
+    a2 = _mm256_andnot_si256(_tmp1, a1);\
+    _a2_hi = _mm256_and_si256(_a2_hi, _tmp1);\
+    a3 = _mm256_andnot_si256(_tmp1, a1);\
+    _a3_hi = _mm256_and_si256(_a3_hi, _tmp1);\
     a1 = _mm256_or_si256(a1, _a1_hi);\
     a2 = _mm256_or_si256(a2, _a2_hi);\
     a3 = _mm256_or_si256(a3, _a3_hi);\
@@ -224,30 +236,34 @@ do {\
 do {\
     /* Roll the b vectors right by the high-value count of a */\
     do {\
-        register __m256i _b1_lo, _b2_lo, _b3_lo, _roll_mask, _shuffle_mask;\
+        register __m256i _b1_lo, _b2_lo, _b3_lo, _roll_mask, _tmp1, _tmp2, _tmp3;\
         size_t _hic = ((ac) & 0xF) + (((ac) >> 1) & 0x10);\
         \
         /* Generate the 32-byte roll blending mask. */\
         /* And create the 16-byte roll shuffle mask. */\
+        _tmp1 = _mm256_load_si256((__m256i*) rrl_shuffle[_hic]);\
         _roll_mask = _mm256_load_si256((__m256i*) srl_blend[ac]);\
-        _shuffle_mask = _mm256_load_si256((__m256i*) rrl_shuffle[_hic]);\
-        \
-        /* Generate the b vectors to be 16-byte rolled and blended. */\
-        _b1_lo = _mm256_permute2x128_si256(b1, b1, 0x00);\
-        _b2_lo = _mm256_permute2x128_si256(b2, b2, 0x00);\
-        _b3_lo = _mm256_permute2x128_si256(b3, b3, 0x00);\
-        b1 = _mm256_permute2x128_si256(b1, b1, 0x11);\
-        b2 = _mm256_permute2x128_si256(b2, b2, 0x11);\
-        b3 = _mm256_permute2x128_si256(b3, b3, 0x11);\
         \
         /* Roll the b vectors by 16-byte rolling each one and then blending */\
         /* with the roll mask */\
-        b1 = _mm256_shuffle_epi8(b1, _shuffle_mask);\
-        b2 = _mm256_shuffle_epi8(b2, _shuffle_mask);\
-        b3 = _mm256_shuffle_epi8(b3, _shuffle_mask);\
-        _b1_lo = _mm256_shuffle_epi8(_b1_lo, _shuffle_mask);\
-        _b2_lo = _mm256_shuffle_epi8(_b2_lo, _shuffle_mask);\
-        _b3_lo = _mm256_shuffle_epi8(_b3_lo, _shuffle_mask);\
+        b1 = _mm256_shuffle_epi8(b1, _tmp1);\
+        b2 = _mm256_shuffle_epi8(b2, _tmp1);\
+        b3 = _mm256_shuffle_epi8(b3, _tmp1);\
+        \
+        /* Generate the lo/hi b vectors to be blended. */\
+        _b1_lo = _mm256_permute2x128_si256(b1, b1, 0x01);\
+        _b2_lo = _mm256_permute2x128_si256(b2, b2, 0x01);\
+        _b3_lo = _mm256_permute2x128_si256(b3, b3, 0x01);\
+        _tmp1 = _mm256_blend_epi32(_b1_lo, b1, 0xF0);\
+        _b1_lo = _mm256_blend_epi32(b1, _b1_lo, 0xF0);\
+        _tmp2 = _mm256_blend_epi32(_b2_lo, b2, 0xF0);\
+        _b2_lo = _mm256_blend_epi32(b2, _b2_lo, 0xF0);\
+        _tmp3 = _mm256_blend_epi32(_b3_lo, b3, 0xF0);\
+        _b3_lo = _mm256_blend_epi32(b3, _b3_lo, 0xF0);\
+        b1 = _tmp1;\
+        b2 = _tmp2;\
+        b3 = _tmp3;\
+        \
         b1 = _mm256_and_si256(b1, _roll_mask);\
         _b1_lo = _mm256_andnot_si256(_roll_mask, _b1_lo);\
         b2 = _mm256_and_si256(b2, _roll_mask);\
