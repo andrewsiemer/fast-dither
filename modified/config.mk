@@ -28,5 +28,6 @@ src/include/sort_lut.h: sort_lut
 src/QSelect.o: src/include/sort_lut.h
 
 #CC = gcc
-src/MedianPartition.o: CFLAGS += -Wno-cast-align -Wno-unused-function
+src/MedianPartition.o: CFLAGS += -Wno-cast-align
+src/MCQuantization.o: CFLAGS += -Wno-cast-align
 src/DTPalette.o: CFLAGS += -Wno-cast-align

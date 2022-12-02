@@ -15,12 +15,11 @@
 #include <stdio.h>
 #include <stdbool.h>
 
-#include <emmintrin.h>
 #include <immintrin.h>
 
 #include <UtilMacro.h>
 
-/*** Special look-up table for bitonic sort. Only used in this file. ***/
+/*** Special look-up table for partition. Only used in this file. ***/
 #include <sort_lut.h>
 
 /// @brief Used to adjust a shuffle vector which operates on 8-byte subvectors.
@@ -35,23 +34,6 @@ __attribute__((aligned (32))) static const uint8_t cmp_adjust[32] = {
     128, 128, 128, 128, 128, 128, 128, 128,
     128, 128, 128, 128, 128, 128, 128, 128,
     128, 128, 128, 128, 128, 128, 128, 128
-};
-
-/// @brief Loads a mask which sets the low 128-bits to one.
-__attribute__((aligned (32))) static const uint8_t half_mask[32] = {
-    0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
-};
-
-/// @brief Masks to set all bits in a register based on the index bit.
-__attribute__((aligned (32))) static const uint8_t maybe_not[2][32] = {
-    { 0 },
-    { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-      0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-      0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-      0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }
 };
 
 /**
@@ -178,9 +160,8 @@ do {\
  */
 #define ARGMSORT1X32(pivots, a1, a2, a3, count)\
 do {\
-    uint64_t _loc, _hic;\
-    \
     /* 16 sort the array after performing the comparison */\
+    uint64_t _loc, _hic;\
     do {\
         register __m256i _mask;\
         _mask = _mm256_load_si256((__m256i*) cmp_adjust);\
@@ -189,27 +170,23 @@ do {\
         ARGMSORT2X16(_mask, a1, a2, a3, _loc, _hic);\
     } while (0);\
     \
-    register __m256i _move_mask, _a1_hi, _a2_hi, _a3_hi;\
+    register __m256i _move_mask, _a1_hi, _a2_hi, _a3_hi, _roll_shuffle;\
     \
     /* Create a mask to use to blend the lo and hi vectors. */\
     _move_mask = _mm256_load_si256((__m256i*) srl_blend[_loc]);\
+    _roll_shuffle = _mm256_load_si256((__m256i*) rrl_shuffle[_loc]);\
     \
     /* Roll the high vectors by the high count value, then create a */\
     /* high-high and low-low vector for each vector */\
-    do {\
-        register __m256i _roll_shuffle;\
-        _roll_shuffle = _mm256_load_si256((__m256i*) rrl_shuffle[_loc]);\
-        \
-        _a1_hi = _mm256_permute2x128_si256(a1, a1, 0x11);\
-        _a2_hi = _mm256_permute2x128_si256(a2, a2, 0x11);\
-        _a3_hi = _mm256_permute2x128_si256(a3, a3, 0x11);\
-        a1 = _mm256_permute2x128_si256(a1, a1, 0x00);\
-        a2 = _mm256_permute2x128_si256(a2, a2, 0x00);\
-        a3 = _mm256_permute2x128_si256(a3, a3, 0x00);\
-        _a1_hi = _mm256_shuffle_epi8(_a1_hi, _roll_shuffle);\
-        _a2_hi = _mm256_shuffle_epi8(_a2_hi, _roll_shuffle);\
-        _a3_hi = _mm256_shuffle_epi8(_a3_hi, _roll_shuffle);\
-    } while (0);\
+    _a1_hi = _mm256_permute2x128_si256(a1, a1, 0x11);\
+    _a2_hi = _mm256_permute2x128_si256(a2, a2, 0x11);\
+    _a3_hi = _mm256_permute2x128_si256(a3, a3, 0x11);\
+    a1 = _mm256_permute2x128_si256(a1, a1, 0x00);\
+    a2 = _mm256_permute2x128_si256(a2, a2, 0x00);\
+    a3 = _mm256_permute2x128_si256(a3, a3, 0x00);\
+    _a1_hi = _mm256_shuffle_epi8(_a1_hi, _roll_shuffle);\
+    _a2_hi = _mm256_shuffle_epi8(_a2_hi, _roll_shuffle);\
+    _a3_hi = _mm256_shuffle_epi8(_a3_hi, _roll_shuffle);\
     \
     /* Use the mask and rolled high-high vector to insert the upper half */\
     /* of each vector in between the low halfs low and high values. */\
@@ -238,26 +215,19 @@ do {\
     register __m256i _a_blend, _b_blend;\
     /* Roll the b vectors right by the high-value count of a */\
     do {\
-        register __m256i _b1_lo, _b2_lo, _b3_lo, _maybe_blend;\
-        register __m256i _roll_mask, _tmp, _rtmp;\
-        size_t _hi_sel = ((ac) >> 4) > 0;\
+        register __m256i _b1_lo, _b2_lo, _b3_lo, _roll_mask, _shuffle_mask;\
         size_t _hic = ((ac) & 0xF) + (((ac) >> 1) & 0x10);\
         \
         /* Begin preparing the 64-byte blending masks. */\
-        _rtmp = _mm256_load_si256((__m256i*) half_mask);\
+        _b_blend = _mm256_load_si256((__m256i*) shifted_set_mask[ac]);\
         _a_blend = _mm256_setzero_si256();\
         _a_blend = _mm256_cmpeq_epi8(_a_blend, _a_blend);\
+        _a_blend = _mm256_xor_si256(_a_blend, _b_blend);\
         \
         /* Generate the 32-byte roll blending mask. */\
-        _b_blend = _mm256_load_si256((__m256i*) srl_blend[_hic]);\
-        _tmp = _mm256_load_si256((__m256i*) &maybe_not[_hi_sel]);\
-        _roll_mask = _mm256_xor_si256(_tmp, _b_blend);\
-        \
-        /* Finish creating the final blending mask by making an (ac % 16) */\
-        /* shifted set vector and an (ac % 16) + 16 shifted vector and */\
-        /* selecting the vector using the 16ths place in ac. */\
-        _maybe_blend = _mm256_permute2x128_si256(_rtmp, _b_blend, 0x03);\
-        _b_blend = _mm256_permute2x128_si256(_rtmp, _b_blend, 0x31);\
+        /* And create the 16-byte roll shuffle mask. */\
+        _roll_mask = _mm256_load_si256((__m256i*) srl_blend[ac]);\
+        _shuffle_mask = _mm256_load_si256((__m256i*) rrl_shuffle[_hic]);\
         \
         /* Generate the b vectors to be 16-byte rolled and blended. */\
         _b1_lo = _mm256_permute2x128_si256(b1, b1, 0x00);\
@@ -267,24 +237,14 @@ do {\
         b2 = _mm256_permute2x128_si256(b2, b2, 0x11);\
         b3 = _mm256_permute2x128_si256(b3, b3, 0x11);\
         \
-        /* Create the 16-byte roll shuffle mask. */\
-        _rtmp = _mm256_load_si256((__m256i*) rrl_shuffle[_hic]);\
-        \
-        /* Select the blend vector */\
-        _maybe_blend = _mm256_and_si256(_maybe_blend, _tmp);\
-        _tmp = _mm256_xor_si256(_tmp, _a_blend);\
-        _b_blend = _mm256_and_si256(_b_blend, _tmp);\
-        _b_blend = _mm256_or_si256(_b_blend, _maybe_blend);\
-        _a_blend = _mm256_xor_si256(_a_blend, _b_blend);\
-        \
         /* Roll the b vectors by 16-byte rolling each one and then blending */\
         /* with the roll mask */\
-        b1 = _mm256_shuffle_epi8(b1, _rtmp);\
-        b2 = _mm256_shuffle_epi8(b2, _rtmp);\
-        b3 = _mm256_shuffle_epi8(b3, _rtmp);\
-        _b1_lo = _mm256_shuffle_epi8(_b1_lo, _rtmp);\
-        _b2_lo = _mm256_shuffle_epi8(_b2_lo, _rtmp);\
-        _b3_lo = _mm256_shuffle_epi8(_b3_lo, _rtmp);\
+        b1 = _mm256_shuffle_epi8(b1, _shuffle_mask);\
+        b2 = _mm256_shuffle_epi8(b2, _shuffle_mask);\
+        b3 = _mm256_shuffle_epi8(b3, _shuffle_mask);\
+        _b1_lo = _mm256_shuffle_epi8(_b1_lo, _shuffle_mask);\
+        _b2_lo = _mm256_shuffle_epi8(_b2_lo, _shuffle_mask);\
+        _b3_lo = _mm256_shuffle_epi8(_b3_lo, _shuffle_mask);\
         b1 = _mm256_blendv_epi8(_b1_lo, b1, _roll_mask);\
         b2 = _mm256_blendv_epi8(_b2_lo, b2, _roll_mask);\
         b3 = _mm256_blendv_epi8(_b3_lo, b3, _roll_mask);\

@@ -36,7 +36,7 @@ static void print_sort_elem_x8(unsigned int b) {
 }
 
 static void print_sort_x8(void) {
-    printf("static const uint8_t sort1b_4x8[256][8] = {\n");
+    printf("__attribute__((aligned(32))) static const uint8_t sort1b_4x8[256][8] = {\n");
     for (unsigned int i = 0; i < 256; i++) {
         DELIM(i, ",\n");
         print_sort_elem_x8(i);
@@ -45,33 +45,52 @@ static void print_sort_x8(void) {
 }
 
 static void print_srl_blend_elem(unsigned int shift) {
-    unsigned int pre = 16 - shift;
+    unsigned int mask = 0xFFFF0000;
+    mask = (mask >> shift) | (mask << (32 - shift));
+
+    printf("    { ");
+    for (unsigned int i = 0; i < 32; i++) {
+        DELIM(i, ", ");
+        if ((mask >> i) & 1) {
+            printf("255");
+        } else {
+            printf("0");
+        }
+    }
+    printf(" }");
+}
+
+static void print_srl_blend(void) {
+    printf("__attribute__((aligned(32))) static const uint8_t srl_blend[33][32] = {\n");
+    for (unsigned int i = 0; i <= 32; i++) {
+        DELIM(i, ",\n");
+        print_srl_blend_elem(i);
+    }
+    printf("\n};\n");
+}
+
+static void print_shifted_set_mask_elem(unsigned int shift) {
     int first = 1;
 
-    printf("{");
-    for (unsigned int i = 0; i < pre; i++) {
+    printf("    { ");
+    for (unsigned int i = 0; i < (32 - shift); i++) {
         if (!first) { printf(", "); }
         first = 0;
-        printf("0x00");
-    }
-    for (unsigned int i = 0; i < 16; i++) {
-        if (!first) { printf(", "); }
-        first = 0;
-        printf("0xFF");
+        printf("255");
     }
     for (unsigned int i = 0; i < shift; i++) {
         if (!first) { printf(", "); }
         first = 0;
-        printf("0x00");
+        printf("0");
     }
-    printf("}\n");
+    printf(" }");
 }
 
-static void print_srl_blend(void) {
-    printf("__attribute__((aligned(32))) static const uint8_t srl_blend[17][32] = {\n");
-    for (unsigned int i = 0; i <= 16; i++) {
+static void print_shifted_set_mask(void) {
+    printf("__attribute__((aligned(32))) static const uint8_t shifted_set_mask[33][32] = {\n");
+    for (unsigned int i = 0; i <= 32; i++) {
         DELIM(i, ",\n");
-        print_srl_blend_elem(i);
+        print_shifted_set_mask_elem(i);
     }
     printf("\n};\n");
 }
@@ -82,5 +101,7 @@ int main(void) {
     print_sort_x8();
     printf("\n");
     print_srl_blend();
+    printf("\n");
+    print_shifted_set_mask();
     return 0;
 }
