@@ -42,10 +42,11 @@ __attribute__((aligned (32))) static const uint8_t cmp_adjust[32] = {
  *
  * Indexed by the number of high-elements in the lower 8-element vector.
  *
- * An extra element is added, since we use an unaligned 256-bit load to
- * read this array.
+ * Padded by two elements, since we unaligned load this twice to blend it
+ * and create a single sorting vector.
  */
-__attribute__((aligned (16))) static const uint8_t sort1b_2x16[10][16] = {
+__attribute__((aligned (16))) static const uint8_t sort1b_2x16[11][16] = {
+    { 0 },
     { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 },
     { 0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 7 },
     { 0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15, 6, 7 },
@@ -97,53 +98,60 @@ __attribute__((aligned (32))) static const uint8_t rrl_shuffle[17][32] = {
 
 /**
  * @brief Sorts 16-bytes chunks of a vector based on the mask in arg.
- * @param arg The mask array to use for sorting.
+ * @param pivots The signed-adjusted pivot vector.
+ * @param adjust The vector used to adjust a1 before the pivot comparison.
  * @param a1 An array to apply the masks sort to.
  * @param a2 An array to apply the masks sort to.
  * @param a3 An array to apply the masks sort to.
  * @param loc Returns the number of high values in the lower 16 bytes.
  * @param hic Returns the number of high values in the higher 16 bytes.
  */
-#define ARGMSORT2X16(mask, a1, a2, a3, loc, hic)\
+#define ARGMSORT2X16(pivots, adjust, a1, a2, a3, loc, hic)\
 do {\
     register __m256i _sort_mask;\
     union { uint32_t u; int32_t i; uint8_t b[4]; } _move_mask, _hi_counts;\
     \
     /* Reduce the high-value count and the offset into the 8-byte sort. */\
     do {\
-        register __m256i _tmp;\
-        __attribute__((aligned(32))) uint64_t _sort8[4];\
-        _move_mask.i = _mm256_movemask_epi8(mask);\
-        \
-        /* For some reason, this is much faster than popcount */\
-        _hi_counts.u = _move_mask.u;\
-        _hi_counts.u = (_hi_counts.u & 0x55555555)\
-                     + ((_hi_counts.u & 0xAAAAAAAA) >> 1);\
-        _hi_counts.u = (_hi_counts.u & 0x33333333)\
-                     + ((_hi_counts.u & 0xCCCCCCCC) >> 2);\
-        _hi_counts.u = (_hi_counts.u & 0x0F0F0F0F)\
-                     + ((_hi_counts.u & 0xF0F0F0F0) >> 4);\
-        \
-        _sort8[0] = * (uint64_t*) sort1b_4x8[_move_mask.b[0]];\
-        _sort8[1] = * (uint64_t*) sort1b_4x8[_move_mask.b[1]];\
-        _sort8[2] = * (uint64_t*) sort1b_4x8[_move_mask.b[2]];\
-        _sort8[3] = * (uint64_t*) sort1b_4x8[_move_mask.b[3]];\
-        _tmp = _mm256_load_si256((__m256i*) shuffle_adjust);\
-        _sort_mask = _mm256_load_si256((__m256i*) _sort8);\
-        _sort_mask = _mm256_add_epi8(_sort_mask, _tmp);\
-        \
-        loc = _hi_counts.b[0] + _hi_counts.b[1];\
-        hic = _hi_counts.b[2] + _hi_counts.b[3];\
+        register __m256i _cmp_mask;\
+        _cmp_mask = _mm256_add_epi8(adjust, a1);\
+        _cmp_mask = _mm256_cmpgt_epi8(_cmp_mask, pivots);\
+        _move_mask.i = _mm256_movemask_epi8(_cmp_mask);\
     } while (0);\
     \
-    /* Generate and apply a 16-byte sort shuffle to the 8-byte sort shuffle */\
-    /* to create a "true" 16-byte sort shuffle vector. */\
+    /* For some reason, this is much faster than popcount */\
+    _hi_counts.u = _move_mask.u;\
+    _hi_counts.u = (_hi_counts.u & 0x55555555)\
+                 + ((_hi_counts.u & 0xAAAAAAAA) >> 1);\
+    _hi_counts.u = (_hi_counts.u & 0x33333333)\
+                 + ((_hi_counts.u & 0xCCCCCCCC) >> 2);\
+    _hi_counts.u = (_hi_counts.u & 0x0F0F0F0F)\
+                 + ((_hi_counts.u & 0xF0F0F0F0) >> 4);\
+    loc = _hi_counts.b[0] + _hi_counts.b[1];\
+    hic = _hi_counts.b[2] + _hi_counts.b[3];\
+    \
     do {\
-        register __m256i _tmp_lo, _tmp_hi;\
-        _tmp_lo = _mm256_loadu_si256((__m256i*) sort1b_2x16[_hi_counts.b[0]]);\
-        _tmp_hi = _mm256_loadu_si256((__m256i*) sort1b_2x16[_hi_counts.b[2]]);\
-        _tmp_lo = _mm256_permute2x128_si256(_tmp_lo, _tmp_hi, 0x20);\
-        _sort_mask = _mm256_shuffle_epi8(_sort_mask, _tmp_lo);\
+        register __m256i _tmp8_0, _tmp8_1, _tmp8_2, _tmp8_3;\
+        register __m256i _tmp16_lo, _tmp16_hi;\
+        /* Load in the 64-bit vectors that will sort each 64-bit subvector. */\
+        _tmp8_0 = _mm256_loadu_si256((__m256i*) sort1b_4x8[_move_mask.b[0] + 3]);\
+        _tmp8_1 = _mm256_loadu_si256((__m256i*) sort1b_4x8[_move_mask.b[1] + 2]);\
+        _tmp8_2 = _mm256_loadu_si256((__m256i*) sort1b_4x8[_move_mask.b[2] + 1]);\
+        _tmp8_3 = _mm256_loadu_si256((__m256i*) sort1b_4x8[_move_mask.b[3] + 0]);\
+        _sort_mask = _mm256_load_si256((__m256i*) shuffle_adjust);\
+        \
+        /* Do the same for the 128-bit sorting vectors */\
+        _tmp16_lo = _mm256_loadu_si256((__m256i*) sort1b_2x16[_hi_counts.b[0] + 1]);\
+        _tmp16_hi = _mm256_loadu_si256((__m256i*) sort1b_2x16[_hi_counts.b[2]]);\
+        \
+        /* Blend the 8/16 element sort vectors together. Then 16-sort the */\
+        /* 8-sort vector to get a 16-sort vector. */\
+        _tmp8_0 = _mm256_blend_epi32(_tmp8_0, _tmp8_1, 0x0C);\
+        _tmp8_2 = _mm256_blend_epi32(_tmp8_2, _tmp8_3, 0xC0);\
+        _tmp16_lo = _mm256_blend_epi32(_tmp16_lo, _tmp16_hi, 0xF0);\
+        _tmp8_0 = _mm256_blend_epi32(_tmp8_0, _tmp8_2, 0xF0);\
+        _sort_mask = _mm256_add_epi8(_sort_mask, _tmp8_0);\
+        _sort_mask = _mm256_shuffle_epi8(_sort_mask, _tmp16_lo);\
     } while (0);\
     \
     a1 = _mm256_shuffle_epi8(a1, _sort_mask);\
@@ -154,21 +162,17 @@ do {\
 /**
  * @brief Sorts 8-bytes chunks of a vector based on the mask in arg.
  * @param pivots The signed-adjusted pivot vector.
+ * @param adjust The vector used to adjust a1 before the pivot comparison.
  * @param a1 An array to apply the masks sort to.
  * @param a2 An array to apply the masks sort to.
  * @param a3 An array to apply the masks sort to.
+ * @param count Returns the number of high elements in the vector.
  */
-#define ARGMSORT1X32(pivots, a1, a2, a3, count)\
+#define ARGMSORT1X32(pivots, adjust, a1, a2, a3, count)\
 do {\
     /* 16 sort the array after performing the comparison */\
     uint64_t _loc, _hic;\
-    do {\
-        register __m256i _mask;\
-        _mask = _mm256_load_si256((__m256i*) cmp_adjust);\
-        _mask = _mm256_add_epi8(_mask, a1);\
-        _mask = _mm256_cmpgt_epi8(_mask, pivots);\
-        ARGMSORT2X16(_mask, a1, a2, a3, _loc, _hic);\
-    } while (0);\
+    ARGMSORT2X16(pivots, adjust, a1, a2, a3, _loc, _hic);\
     \
     register __m256i _move_mask, _a1_hi, _a2_hi, _a3_hi, _roll_shuffle;\
     \
@@ -212,17 +216,10 @@ do {\
  */
 #define ARGMSORT2X32(ac, a1, a2, a3, bc, b1, b2, b3)\
 do {\
-    register __m256i _a_blend, _b_blend;\
     /* Roll the b vectors right by the high-value count of a */\
     do {\
         register __m256i _b1_lo, _b2_lo, _b3_lo, _roll_mask, _shuffle_mask;\
         size_t _hic = ((ac) & 0xF) + (((ac) >> 1) & 0x10);\
-        \
-        /* Begin preparing the 64-byte blending masks. */\
-        _b_blend = _mm256_load_si256((__m256i*) shifted_set_mask[ac]);\
-        _a_blend = _mm256_setzero_si256();\
-        _a_blend = _mm256_cmpeq_epi8(_a_blend, _a_blend);\
-        _a_blend = _mm256_xor_si256(_a_blend, _b_blend);\
         \
         /* Generate the 32-byte roll blending mask. */\
         /* And create the 16-byte roll shuffle mask. */\
@@ -251,8 +248,15 @@ do {\
     } while (0);\
     \
     do {\
+        register __m256i _a1_tmp, _a2_tmp, _a3_tmp, _a_blend, _b_blend;\
+        \
+        /* Load the 64-byte blending masks. */\
+        _b_blend = _mm256_load_si256((__m256i*) shifted_set_mask[ac]);\
+        _a_blend = _mm256_setzero_si256();\
+        _a_blend = _mm256_cmpeq_epi8(_a_blend, _a_blend);\
+        _a_blend = _mm256_xor_si256(_a_blend, _b_blend);\
+        \
         /* Sort the a and b vectors across each other. */\
-        register __m256i _a1_tmp, _a2_tmp, _a3_tmp;\
         _a1_tmp = _mm256_blendv_epi8(a1, b1, _a_blend);\
         _a2_tmp = _mm256_blendv_epi8(a2, b2, _a_blend);\
         _a3_tmp = _mm256_blendv_epi8(a3, b3, _a_blend);\
@@ -297,8 +301,8 @@ AlignPartition(
         uint8_t p[4];
     } crime = { .p = { pivot, pivot, pivot, pivot } };
     register __m256i pivots = _mm256_castps_si256(_mm256_broadcast_ss(&crime.f));
-    register __m256i tmp = _mm256_load_si256((__m256i*) cmp_adjust);
-    pivots = _mm256_add_epi8(pivots, tmp);
+    register __m256i adjust = _mm256_load_si256((__m256i*) cmp_adjust);
+    pivots = _mm256_add_epi8(pivots, adjust);
 
     // Load and sort the first chunk. This is done here to avoid repeat work.
     size_t lo = 0, hi = size - 1;
@@ -308,7 +312,7 @@ AlignPartition(
     a1 = _mm256_load_si256(&ch1[lo]);
     a2 = _mm256_load_si256(&ch2[lo]);
     a3 = _mm256_load_si256(&ch3[lo]);
-    ARGMSORT1X32(pivots, a1, a2, a3, ac);
+    ARGMSORT1X32(pivots, adjust, a1, a2, a3, ac);
 
     // Perform the partition for all except the last step.
     while (hi > lo) {
@@ -318,7 +322,7 @@ AlignPartition(
         b1 = _mm256_load_si256(&ch1[next]);
         b2 = _mm256_load_si256(&ch2[next]);
         b3 = _mm256_load_si256(&ch3[next]);
-        ARGMSORT1X32(pivots, b1, b2, b3, bc);
+        ARGMSORT1X32(pivots, adjust, b1, b2, b3, bc);
 
         // Sort across both chunks.
         ARGMSORT2X32(ac, a1, a2, a3, bc, b1, b2, b3);
