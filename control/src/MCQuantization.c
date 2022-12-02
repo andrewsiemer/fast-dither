@@ -90,8 +90,13 @@ MCQuantizeData(MCTriplet *data, size_t size, MCWorkspace *ws)
         parentCube = &ws->cubes[parentIndex];
 
         MCCalculateBiggestDimension(parentCube);
+
+        unsigned long long ts1, ts2;
+        TIMESTAMP(ts1);
         qsort(parentCube->data, parentCube->size,
                 sizeof(MCTriplet), MCCompareTriplet);
+        TIMESTAMP(ts2);
+        TIME_REPORT("Median Partition", ts1, ts2);
 
         /* Get median location */
         size_t mid = parentCube->size >> 1;

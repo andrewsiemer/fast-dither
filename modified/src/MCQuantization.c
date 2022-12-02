@@ -41,6 +41,11 @@ typedef struct {
     uint8_t *b;
 } MCCube;
 
+typedef struct {
+    unsigned long long shrink_time;
+    unsigned long long part_time;
+} mc_time_t;
+
 struct mc_workspace_t {
     mc_byte_t level;
     MCCube *cubes;
@@ -70,7 +75,8 @@ MCWorkspaceDestroy(MCWorkspace *ws)
 // LOOOOOOONG BOI
 static void
 MCShrinkCube(
-    MCCube *cube
+    MCCube *cube,
+    mc_time_t *time
 ) {
     unsigned long long ts1, ts2;
     mc_byte_t r, g, b;
@@ -195,7 +201,7 @@ MCShrinkCube(
     }
 
     TIMESTAMP(ts2);
-    TIME_REPORT("MCShrinkCube", ts1, ts2);
+    time->shrink_time += ts2 - ts1;
 }
 
 static color_dim_t
@@ -223,7 +229,8 @@ MCCalculateBiggestDimension(
 static void
 MCSplit(
     MCCube *lo,
-    MCCube *hi
+    MCCube *hi,
+    mc_time_t *time
 ) {
     assert(lo);
     assert(hi);
@@ -253,7 +260,7 @@ MCSplit(
         default:
             assert(0);
     }
-    TIME_REPORT("Median Partition", ts1, ts2);
+    time->part_time += ts2 - ts1;
 
     // Split the cubes by size.
     *hi = *lo;
@@ -264,8 +271,8 @@ MCSplit(
     hi->size -= lo->size;
 
     // Shrink the value range of the cubes.
-    MCShrinkCube(lo);
-    MCShrinkCube(hi);
+    MCShrinkCube(lo, time);
+    MCShrinkCube(hi, time);
 }
 
 static DTPixel
@@ -288,6 +295,7 @@ MCQuantizeData(
     assert(ws);
 
     size_t size = img->w * img->h;
+    mc_time_t time = { .part_time = 0 };
 
     /* first cube */
     ws->cubes[0] = (MCCube) {
@@ -296,7 +304,7 @@ MCQuantizeData(
        .b = img->b,
        .size = size
     };
-    MCShrinkCube(ws->cubes);
+    MCShrinkCube(ws->cubes, &time);
 
     /* remaining cubes */
     size_t parentIndex = 0;
@@ -308,7 +316,7 @@ MCQuantizeData(
         // Partition the cube across the median.
         parentCube = &ws->cubes[parentIndex];
         offset = ws->palette->size >> iLevel;
-        MCSplit(parentCube, &ws->cubes[parentIndex + offset]);
+        MCSplit(parentCube, &ws->cubes[parentIndex + offset], &time);
 
         /* check if iLevel must be increased by analysing if the next
          * offset is within palette size boundary. If not, change level
@@ -322,8 +330,12 @@ MCQuantizeData(
     }
 
     /* find final cube averages */
-    for (size_t i = 0; i < ws->palette->size; i++)
+    for (size_t i = 0; i < ws->palette->size; i++) {
         ws->palette->colors[i] = MCCubeAverage(&ws->cubes[i]);
+    }
+
+    TIME_REPORT("Median Partition", 0, time.part_time);
+    TIME_REPORT("Cube Shrink", 0, time.shrink_time);
 
     DTPalette *ret = ws->palette;
     ws->palette = NULL;

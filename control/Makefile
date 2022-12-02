@@ -30,7 +30,7 @@ LIBS =
 
 # Flags for use with the compiler. Currently assumes clang.
 CFLAGS =\
-	-std=c99 -Wall -Werror -mavx -mavx2 -mfma -O0 -ggdb\
+	-std=c99 -Wall -Werror -mavx -mavx2 -mfma -O3 -ggdb\
 	$(addprefix -I,$(wildcard $(INC)))
 
 include config.mk
