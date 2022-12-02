@@ -72,9 +72,9 @@ main(int argc, char ** argv)
     if (verbose)
         for (size_t i = 0; i < palette->size; i++)
             printf("%d %d %d\n",
-                palette->rgb[i],
-                palette->rgb[palette->size+i],
-                palette->rgb[palette->size*2+i]
+                palette->colors[i],
+                palette->colors[palette->size+i],
+                palette->colors[palette->size*2+i]
             );
 
     if (dither) {
@@ -92,7 +92,7 @@ main(int argc, char ** argv)
 
     WriteImageToFile(input, outputFile);
 
-    XFree(palette->rgb);
+    XFree(palette->colors);
     XFree(palette);
 
     return 0;
@@ -119,20 +119,20 @@ PaletteForIdentifier(char *str, DTImage *image)
     }
 
     /* RGB */
-    // if (strcmp(name, "rgb") == 0) {
-    //     if (size) fprintf(stderr, "Ignored palette size.\n");
-    //     return StandardPaletteRGB();
-    // }
+    if (strcmp(name, "rgb") == 0) {
+        if (size) fprintf(stderr, "Ignored palette size.\n");
+        return StandardPaletteRGB();
+    }
 
-    // if (strcmp(name, "bw") == 0) {
-    //     if (size == 1) {
-    //         fprintf(stderr,
-    //                 "Invalid palette size for B&W. Must be at least 2.\n");
-    //         return NULL;
-    //     }
-    //     if (!size) size = 2;
-    //     return StandardPaletteBW(size);
-    // }
+    if (strcmp(name, "bw") == 0) {
+        if (size == 1) {
+            fprintf(stderr,
+                    "Invalid palette size for B&W. Must be at least 2.\n");
+            return NULL;
+        }
+        if (!size) size = 2;
+        return StandardPaletteBW(size);
+    }
 
     if (strcmp(name, "custom") == 0) {
         if (!size) {
@@ -148,8 +148,8 @@ PaletteForIdentifier(char *str, DTImage *image)
                     "Size required for automatic palette, aborting.\n");
             return NULL;
         }
-        if (size & (size - 1)) {
-            fprintf(stderr, "Size must be a power of 2, aborting.\n");
+        if (size % 16 != 0) { // PalletSearch requires pow 16
+            fprintf(stderr, "Size must be a power of 16, aborting.\n");
             return NULL;
         }
         return QuantizedPaletteForImage(image, size);
@@ -165,14 +165,14 @@ ReadPaletteFromStdin(size_t size)
 {
     DTPalettePacked *palette = XMalloc(sizeof(DTPalettePacked));
     palette->size = size;
-    palette->rgb = XMalloc(size*sizeof(int)*3);
+    palette->colors = XMalloc(size*sizeof(int)*3);
 
     unsigned int r, g, b;
     for (size_t i = 0; i < size; i++) {
         scanf(" %d %d %d", &r, &g, &b);
-        palette->rgb[i] = (byte) r;
-        palette->rgb[palette->size+i] = (byte) g;
-        palette->rgb[palette->size*2+i] = (byte) b;
+        palette->colors[i] = (byte) r;
+        palette->colors[palette->size+i] = (byte) g;
+        palette->colors[palette->size*2+i] = (byte) b;
     }
 
     return palette;
@@ -185,7 +185,7 @@ QuantizedPaletteForImage(DTImage *image, size_t size)
     MCWorkspace *ws = MCWorkspaceMake((mc_byte_t) (double) log2(size));
     DTPalettePacked *palette = XMalloc(sizeof(DTPalettePacked));
 
-    palette->rgb = XMalloc(size*sizeof(int)*3);
+    palette->colors = XMalloc(size*sizeof(int)*3);
     palette->size = size;
 
     unsigned long long ts1, ts2;
@@ -194,9 +194,9 @@ QuantizedPaletteForImage(DTImage *image, size_t size)
     DTPalette *mc = MCQuantizeData(img, ws);
 
     for (size_t i = 0; i < palette->size; i++) {
-        palette->rgb[i] = mc->colors[i].r;
-        palette->rgb[palette->size+i] = mc->colors[i].g;
-        palette->rgb[palette->size*2+i] = mc->colors[i].b;
+        palette->colors[i] = mc->colors[i].r;
+        palette->colors[palette->size+i] = mc->colors[i].g;
+        palette->colors[palette->size*2+i] = mc->colors[i].b;
     }
 
     TIMESTAMP(ts2);
