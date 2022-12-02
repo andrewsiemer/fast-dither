@@ -70,7 +70,7 @@ StandardPaletteRGB()
 
 DTPixel
 FindClosestColorFromPalette(DTPixel needle, DTPalettePacked *palette)
-{    
+{
     unsigned long long ts1, ts2;
     TIMESTAMP(ts1);
     // indices on the current iteration
@@ -85,7 +85,7 @@ FindClosestColorFromPalette(DTPixel needle, DTPalettePacked *palette)
     const __m256i needle_r = _mm256_set1_epi32(needle.r);
     const __m256i needle_g = _mm256_set1_epi32(needle.g);
     const __m256i needle_b = _mm256_set1_epi32(needle.b);
-    
+
     __m256i curr_r, curr_g, curr_b, dist, curr_r2, curr_g2, curr_b2, dist2, mask;
     for (size_t i = 0; i < palette->size; i += 16) {
         // load next 16 palette colors
@@ -156,7 +156,7 @@ FindClosestColorFromPalette(DTPixel needle, DTPalettePacked *palette)
     };
 
     TIMESTAMP(ts2);
-    TIME_REPORT("PaletteSearch", ts1, ts2);
+    // TIME_REPORT("PaletteSearch", ts1, ts2);
 
     return ret;
 }
