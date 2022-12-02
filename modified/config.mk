@@ -25,7 +25,7 @@ sort_lut: sort_lut.c
 src/include/sort_lut.h: sort_lut
 	./sort_lut > $@
 
-src/QSelect.o: src/include/sort_lut.h
+src/MedianPartition.o: src/include/sort_lut.h
 
 #CC = gcc
 src/MedianPartition.o: CFLAGS += -Wno-cast-align
