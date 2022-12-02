@@ -17,15 +17,6 @@ do {\
 } while (0)
 
 static void print_sort_elem_x8(unsigned int b) {
-    const unsigned int vec_size = 256;
-    const unsigned int align_pad = 3;
-
-    if ((b < align_pad) || (b >= (vec_size + align_pad))) {
-        printf("    { 0 }");
-        return;
-    }
-
-    b = b - align_pad;
     unsigned int arr[8] = {0};
     int lo = 0, hi = 7;
     for (unsigned int i = 0; i < 8; i++) {
@@ -45,10 +36,8 @@ static void print_sort_elem_x8(unsigned int b) {
 }
 
 static void print_sort_x8(void) {
-    const unsigned int vec_size = 256;
-    const unsigned int align_pad = 3;
-    printf("__attribute__((aligned(32))) static const uint8_t sort1b_4x8[262][8] = {\n");
-    for (unsigned int i = 0; i < (vec_size + (2 * align_pad)); i++) {
+    printf("__attribute__((aligned(32))) static const uint8_t sort1b_4x8[256][8] = {\n");
+    for (unsigned int i = 0; i < 256; i++) {
         DELIM(i, ",\n");
         print_sort_elem_x8(i);
     }

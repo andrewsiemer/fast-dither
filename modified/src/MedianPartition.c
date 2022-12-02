@@ -130,15 +130,18 @@ do {\
     loc = _hi_counts.b[0] + _hi_counts.b[1];\
     hic = _hi_counts.b[2] + _hi_counts.b[3];\
     \
+    /* Load in the 8-element sort vectors. */\
+    __attribute__((aligned(32))) uint64_t _sort8[4];\
+    _sort8[0] = * (uint64_t*) sort1b_4x8[_move_mask.b[0]];\
+    _sort8[1] = * (uint64_t*) sort1b_4x8[_move_mask.b[1]];\
+    _sort8[2] = * (uint64_t*) sort1b_4x8[_move_mask.b[2]];\
+    _sort8[3] = * (uint64_t*) sort1b_4x8[_move_mask.b[3]];\
+    \
     do {\
-        register __m256i _tmp8_0, _tmp8_1, _tmp8_2, _tmp8_3;\
-        register __m256i _tmp16_lo, _tmp16_hi;\
+        register __m256i _tmp8, _tmp16_lo, _tmp16_hi;\
         /* Load in the 64-bit vectors that will sort each 64-bit subvector. */\
-        _tmp8_0 = _mm256_loadu_si256((__m256i*) sort1b_4x8[_move_mask.b[0] + 3]);\
-        _tmp8_1 = _mm256_loadu_si256((__m256i*) sort1b_4x8[_move_mask.b[1] + 2]);\
-        _tmp8_2 = _mm256_loadu_si256((__m256i*) sort1b_4x8[_move_mask.b[2] + 1]);\
-        _tmp8_3 = _mm256_loadu_si256((__m256i*) sort1b_4x8[_move_mask.b[3] + 0]);\
         _sort_mask = _mm256_load_si256((__m256i*) shuffle_adjust);\
+        _tmp8 = _mm256_load_si256((__m256i*) _sort8);\
         \
         /* Do the same for the 128-bit sorting vectors */\
         _tmp16_lo = _mm256_loadu_si256((__m256i*) sort1b_2x16[_hi_counts.b[0] + 1]);\
@@ -146,11 +149,8 @@ do {\
         \
         /* Blend the 8/16 element sort vectors together. Then 16-sort the */\
         /* 8-sort vector to get a 16-sort vector. */\
-        _tmp8_0 = _mm256_blend_epi32(_tmp8_0, _tmp8_1, 0x0C);\
-        _tmp8_2 = _mm256_blend_epi32(_tmp8_2, _tmp8_3, 0xC0);\
         _tmp16_lo = _mm256_blend_epi32(_tmp16_lo, _tmp16_hi, 0xF0);\
-        _tmp8_0 = _mm256_blend_epi32(_tmp8_0, _tmp8_2, 0xF0);\
-        _sort_mask = _mm256_add_epi8(_sort_mask, _tmp8_0);\
+        _sort_mask = _mm256_add_epi8(_sort_mask, _tmp8);\
         _sort_mask = _mm256_shuffle_epi8(_sort_mask, _tmp16_lo);\
     } while (0);\
     \
@@ -194,9 +194,15 @@ do {\
     \
     /* Use the mask and rolled high-high vector to insert the upper half */\
     /* of each vector in between the low halfs low and high values. */\
-    a1 = _mm256_blendv_epi8(a1, _a1_hi, _move_mask);\
-    a2 = _mm256_blendv_epi8(a2, _a2_hi, _move_mask);\
-    a3 = _mm256_blendv_epi8(a3, _a3_hi, _move_mask);\
+    a1 = _mm256_andnot_si256(_move_mask, a1);\
+    _a1_hi = _mm256_and_si256(_a1_hi, _move_mask);\
+    a2 = _mm256_andnot_si256(_move_mask, a1);\
+    _a2_hi = _mm256_and_si256(_a2_hi, _move_mask);\
+    a3 = _mm256_andnot_si256(_move_mask, a1);\
+    _a3_hi = _mm256_and_si256(_a3_hi, _move_mask);\
+    a1 = _mm256_or_si256(a1, _a1_hi);\
+    a2 = _mm256_or_si256(a2, _a2_hi);\
+    a3 = _mm256_or_si256(a3, _a3_hi);\
     count = _loc + _hic;\
 } while (0)
 
@@ -242,30 +248,46 @@ do {\
         _b1_lo = _mm256_shuffle_epi8(_b1_lo, _shuffle_mask);\
         _b2_lo = _mm256_shuffle_epi8(_b2_lo, _shuffle_mask);\
         _b3_lo = _mm256_shuffle_epi8(_b3_lo, _shuffle_mask);\
-        b1 = _mm256_blendv_epi8(_b1_lo, b1, _roll_mask);\
-        b2 = _mm256_blendv_epi8(_b2_lo, b2, _roll_mask);\
-        b3 = _mm256_blendv_epi8(_b3_lo, b3, _roll_mask);\
+        b1 = _mm256_and_si256(b1, _roll_mask);\
+        _b1_lo = _mm256_andnot_si256(_roll_mask, _b1_lo);\
+        b2 = _mm256_and_si256(b2, _roll_mask);\
+        _b2_lo = _mm256_andnot_si256(_roll_mask, _b2_lo);\
+        b3 = _mm256_and_si256(b3, _roll_mask);\
+        _b3_lo = _mm256_andnot_si256(_roll_mask, _b3_lo);\
+        b1 = _mm256_or_si256(b1, _b1_lo);\
+        b2 = _mm256_or_si256(b2, _b2_lo);\
+        b3 = _mm256_or_si256(b3, _b3_lo);\
     } while (0);\
     \
     do {\
-        register __m256i _a1_tmp, _a2_tmp, _a3_tmp, _a_blend, _b_blend;\
+        register __m256i _a1_tmp1, _a2_tmp1, _a3_tmp1, _b_blend;\
+        register __m256i _a1_tmp2, _a2_tmp2, _a3_tmp2;\
         \
         /* Load the 64-byte blending masks. */\
         _b_blend = _mm256_load_si256((__m256i*) shifted_set_mask[ac]);\
-        _a_blend = _mm256_setzero_si256();\
-        _a_blend = _mm256_cmpeq_epi8(_a_blend, _a_blend);\
-        _a_blend = _mm256_xor_si256(_a_blend, _b_blend);\
         \
         /* Sort the a and b vectors across each other. */\
-        _a1_tmp = _mm256_blendv_epi8(a1, b1, _a_blend);\
-        _a2_tmp = _mm256_blendv_epi8(a2, b2, _a_blend);\
-        _a3_tmp = _mm256_blendv_epi8(a3, b3, _a_blend);\
-        b1 = _mm256_blendv_epi8(a1, b1, _b_blend);\
-        b2 = _mm256_blendv_epi8(a2, b2, _b_blend);\
-        b3 = _mm256_blendv_epi8(a3, b3, _b_blend);\
-        a1 = _a1_tmp;\
-        a2 = _a2_tmp;\
-        a3 = _a3_tmp;\
+        _a1_tmp1 = _mm256_andnot_si256(_b_blend, b1);\
+        _a1_tmp2 = _mm256_and_si256(_b_blend, a1);\
+        _a2_tmp1 = _mm256_andnot_si256(_b_blend, b2);\
+        _a2_tmp2 = _mm256_and_si256(_b_blend, a2);\
+        _a3_tmp1 = _mm256_andnot_si256(_b_blend, b3);\
+        _a3_tmp2 = _mm256_and_si256(_b_blend, a3);\
+        _a1_tmp1 = _mm256_or_si256(_a1_tmp1, _a1_tmp2);\
+        _a2_tmp1 = _mm256_or_si256(_a2_tmp1, _a2_tmp2);\
+        _a3_tmp1 = _mm256_or_si256(_a3_tmp1, _a3_tmp2);\
+        b1 = _mm256_and_si256(_b_blend, b1);\
+        a1 = _mm256_andnot_si256(_b_blend, a1);\
+        b2 = _mm256_and_si256(_b_blend, b2);\
+        a2 = _mm256_andnot_si256(_b_blend, a2);\
+        b3 = _mm256_and_si256(_b_blend, b3);\
+        a3 = _mm256_andnot_si256(_b_blend, a3);\
+        b1 = _mm256_or_si256(a1, b1);\
+        b2 = _mm256_or_si256(a2, b2);\
+        b3 = _mm256_or_si256(a3, b3);\
+        a1 = _a1_tmp1;\
+        a2 = _a2_tmp1;\
+        a3 = _a3_tmp1;\
     } while (0);\
     \
     /* Update the high-value counts. */\
