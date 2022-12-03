@@ -8,6 +8,7 @@
 #undef NDEBUG
 #include <assert.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 #define DELIM(it, s)\
 do {\
@@ -51,7 +52,8 @@ static void print_srl_blend_elem(unsigned int shift) {
     printf("    { ");
     for (unsigned int i = 0; i < 32; i++) {
         DELIM(i, ", ");
-        if ((mask >> i) & 1) {
+        bool hi = ((mask >> i) & 1) ^ (i < 16);
+        if (hi) {
             printf("255");
         } else {
             printf("0");

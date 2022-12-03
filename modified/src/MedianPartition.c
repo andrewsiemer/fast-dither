@@ -36,14 +36,6 @@ __attribute__((aligned (32))) static const uint8_t cmp_adjust[32] = {
     128, 128, 128, 128, 128, 128, 128, 128
 };
 
-/// @brief Used to reduce the number of permutes necessary when rolling.
-__attribute__((aligned (32))) static const uint8_t half_mask[32] = {
-    255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255,
-    0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0
-};
-
 /**
  * @brief Shuffle vectors to sort two 8-element sorted vectors into a 16-element
  *        sorted vector.
@@ -139,7 +131,13 @@ __attribute__((aligned (32))) static const uint8_t rrl_shuffle_hi[16][32] = {
 };
 
 /**
- * @brief Sorts 16-bytes chunks of a vector based on the mask in arg.
+ * @brief Sorts 16-byte chunks of a vector based on the pivot and a1.
+ *
+ * Note that the vectors returned by this will automaticically have their
+ * high 16-byte chunk rolled by loc. This is an optimization, as this is
+ * required by ARGMSORT1X32 anyway, and doing it here means less shuffles
+ * are necessary overall.
+ *
  * @param pivots The signed-adjusted pivot vector.
  * @param adjust The vector used to adjust a1 before the pivot comparison.
  * @param a1 An array to apply the masks sort to.
@@ -150,7 +148,7 @@ __attribute__((aligned (32))) static const uint8_t rrl_shuffle_hi[16][32] = {
  */
 #define ARGMSORT2X16(pivots, adjust, a1, a2, a3, loc, hic)\
 do {\
-    register __m256i _sort_mask;\
+    register __m256i _sort_mask = _mm256_load_si256((__m256i*) shuffle_adjust);\
     union { uint32_t u; int32_t i; uint8_t b[4]; } _move_mask, _hi_counts;\
     \
     /* Reduce the high-value count and the offset into the 8-byte sort. */\
@@ -180,9 +178,9 @@ do {\
     _sort8[3] = * (uint64_t*) sort1b_4x8[_move_mask.b[3]];\
     \
     do {\
-        register __m256i _tmp8, _tmp16_lo, _tmp16_hi;\
+        register __m256i _tmp8, _pre_roll, _tmp16_lo, _tmp16_hi;\
         /* Load in the 64-bit vectors that will sort each 64-bit subvector. */\
-        _sort_mask = _mm256_load_si256((__m256i*) shuffle_adjust);\
+        _pre_roll = _mm256_load_si256((__m256i*) rrl_shuffle_hi[(loc) & 0xF]);\
         _tmp8 = _mm256_load_si256((__m256i*) _sort8);\
         \
         /* Do the same for the 128-bit sorting vectors */\
@@ -194,6 +192,7 @@ do {\
         _tmp16_lo = _mm256_blend_epi32(_tmp16_lo, _tmp16_hi, 0xF0);\
         _sort_mask = _mm256_add_epi8(_sort_mask, _tmp8);\
         _sort_mask = _mm256_shuffle_epi8(_sort_mask, _tmp16_lo);\
+        _sort_mask = _mm256_shuffle_epi8(_sort_mask, _pre_roll);\
     } while (0);\
     \
     a1 = _mm256_shuffle_epi8(a1, _sort_mask);\
@@ -216,20 +215,18 @@ do {\
     uint64_t _loc, _hic;\
     ARGMSORT2X16(pivots, adjust, a1, a2, a3, _loc, _hic);\
     \
-    register __m256i _roll_mask, _a1_lo, _a2_lo, _a3_lo, _roll_shuffle, _tmp;\
+    register __m256i _roll_mask, _a1_lo, _a2_lo, _a3_lo;\
     \
     /* Create a mask to use to blend the lo and hi vectors. */\
-    _roll_shuffle = _mm256_load_si256((__m256i*) rrl_shuffle_hi[_loc & 0xF]);\
     _roll_mask = _mm256_load_si256((__m256i*) srl_blend[_loc]);\
-    _tmp = _mm256_load_si256((__m256i*) half_mask);\
-    _roll_mask = _mm256_xor_si256(_tmp, _roll_mask);\
     \
-    a1 = _mm256_shuffle_epi8(a1, _roll_shuffle);\
-    a2 = _mm256_shuffle_epi8(a2, _roll_shuffle);\
-    a3 = _mm256_shuffle_epi8(a3, _roll_shuffle);\
-    \
-    /* Roll the high vectors by the high count value, then create a */\
-    /* high-high and low-low vector for each vector */\
+    /* Reverse each channel to allow it to be blended. The rolling of the */\
+    /* high channel was already done in argmsort2x16, as doing it there */\
+    /* reduces the number of shuffles necessary and allows the load to */\
+    /* happen further from its use. Note that the srl_blend vector has the */\
+    /* low half of each SIMD vector inverted in anticipation of this permute */\
+    /* time save (where we simply reverse instead of creating a */\
+    /* high-high/low-low vector). */\
     _a1_lo = _mm256_permute2x128_si256(a1, a1, 0x01);\
     _a2_lo = _mm256_permute2x128_si256(a2, a2, 0x01);\
     _a3_lo = _mm256_permute2x128_si256(a3, a3, 0x01);\
@@ -267,15 +264,11 @@ do {\
     /* Roll the b vectors right by the high-value count of a */\
     do {\
         register __m256i _b1_lo, _b2_lo, _b3_lo, _roll_mask, _shuffle_mask;\
-        register __m256i _tmp;\
-        size_t _hic = ((ac) & 0xF);\
         \
         /* Generate the 32-byte roll blending mask. */\
         /* And create the 16-byte roll shuffle mask. */\
-        _shuffle_mask = _mm256_load_si256((__m256i*) rrl_shuffle[_hic]);\
+        _shuffle_mask = _mm256_load_si256((__m256i*) rrl_shuffle[(ac) & 0xF]);\
         _roll_mask = _mm256_load_si256((__m256i*) srl_blend[ac]);\
-        _tmp = _mm256_load_si256((__m256i*) half_mask);\
-        _roll_mask = _mm256_xor_si256(_roll_mask, _tmp);\
         \
         /* Roll the b vectors by 16-byte rolling each one and then blending */\
         /* with the roll mask */\
@@ -475,8 +468,10 @@ Partition(
     }
 
 #if 0
+    // Verify that the array was partitioned correctly.
     for (size_t i = 0; i < size; i++) {
-        assert(((i < bound) && (ch1[i] <= pivot)) || ((i >= bound) && (ch1[i] > pivot)));
+        assert(((i < bound) && (ch1[i] <= pivot)) ||
+               ((i >= bound) && (ch1[i] > pivot)));
     }
 #endif
 
