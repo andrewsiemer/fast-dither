@@ -19,7 +19,7 @@ typedef struct {
 
 typedef struct {
     size_t size;
-    int *rgb;
+    int *colors;
 } DTPalettePacked;
 
 DTPalettePacked *StandardPaletteBW(size_t size);
