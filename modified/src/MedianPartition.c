@@ -214,6 +214,7 @@ do {\
     /* 16 sort the array after performing the comparison */\
     uint64_t _loc, _hic;\
     ARGMSORT2X16(pivots, adjust, a1, a2, a3, _loc, _hic);\
+    count = _loc + _hic;\
     \
     register __m256i _roll_mask, _a1_lo, _a2_lo, _a3_lo;\
     \
@@ -242,7 +243,6 @@ do {\
     a1 = _mm256_or_si256(a1, _a1_lo);\
     a2 = _mm256_or_si256(a2, _a2_lo);\
     a3 = _mm256_or_si256(a3, _a3_lo);\
-    count = _loc + _hic;\
 } while (0)
 
 /**
