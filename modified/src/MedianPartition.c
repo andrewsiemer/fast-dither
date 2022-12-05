@@ -149,7 +149,8 @@ __attribute__((aligned (32))) static const uint8_t rrl_shuffle_hi[16][32] = {
 #define ARGMSORT2X16(pivots, adjust, a1, a2, a3, loc, hic)\
 do {\
     register __m256i _sort_mask = _mm256_load_si256((__m256i*) shuffle_adjust);\
-    union { uint32_t u; int32_t i; uint8_t b[4]; } _move_mask, _hi_counts;\
+    union { int32_t i; uint8_t b[4]; uint16_t s[2]; } _move_mask;\
+    unsigned int _lo_loc, _hi_loc;\
     \
     /* Reduce the high-value count and the offset into the 8-byte sort. */\
     do {\
@@ -159,16 +160,11 @@ do {\
         _move_mask.i = _mm256_movemask_epi8(_cmp_mask);\
     } while (0);\
     \
-    /* For some reason, this is much faster than popcount */\
-    _hi_counts.u = _move_mask.u;\
-    _hi_counts.u = (_hi_counts.u & 0x55555555)\
-                 + ((_hi_counts.u & 0xAAAAAAAA) >> 1);\
-    _hi_counts.u = (_hi_counts.u & 0x33333333)\
-                 + ((_hi_counts.u & 0xCCCCCCCC) >> 2);\
-    _hi_counts.u = (_hi_counts.u & 0x0F0F0F0F)\
-                 + ((_hi_counts.u & 0xF0F0F0F0) >> 4);\
-    loc = _hi_counts.b[0] + _hi_counts.b[1];\
-    hic = _hi_counts.b[2] + _hi_counts.b[3];\
+    /* Determine how many high elements are in each section. */\
+    _lo_loc = (uint8_t) (unsigned int) __builtin_popcount(_move_mask.b[0]);\
+    _hi_loc = (uint8_t) (unsigned int) __builtin_popcount(_move_mask.b[2]);\
+    loc = (unsigned int) __builtin_popcount(_move_mask.s[0]);\
+    hic = (unsigned int) __builtin_popcount(_move_mask.s[1]);\
     \
     /* Load in the 8-element sort vectors. */\
     __attribute__((aligned(32))) uint64_t _sort8[4];\
@@ -184,8 +180,8 @@ do {\
         _tmp8 = _mm256_load_si256((__m256i*) _sort8);\
         \
         /* Do the same for the 128-bit sorting vectors */\
-        _tmp16_lo = _mm256_loadu_si256((__m256i*) sort1b_2x16[_hi_counts.b[0] + 1]);\
-        _tmp16_hi = _mm256_loadu_si256((__m256i*) sort1b_2x16[_hi_counts.b[2]]);\
+        _tmp16_lo = _mm256_loadu_si256((__m256i*) sort1b_2x16[_lo_loc + 1]);\
+        _tmp16_hi = _mm256_loadu_si256((__m256i*) sort1b_2x16[_hi_loc]);\
         \
         /* Blend the 8/16 element sort vectors together. Then 16-sort the */\
         /* 8-sort vector to get a 16-sort vector. */\
