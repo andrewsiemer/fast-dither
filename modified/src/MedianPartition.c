@@ -456,6 +456,8 @@ Partition(
         }
     }
 
+    bound = MIN(bound, size - post_align);
+
     for (size_t hi = size - 1; (hi >= (size - post_align)) && (hi >= bound);) {
         if (ch1[hi] <= pivot) {
             SWAP(ch1[hi], ch1[bound]);
@@ -470,8 +472,13 @@ Partition(
 #if 0
     // Verify that the array was partitioned correctly.
     for (size_t i = 0; i < size; i++) {
-        assert(((i < bound) && (ch1[i] <= pivot)) ||
-               ((i >= bound) && (ch1[i] > pivot)));
+        if (!(((i < bound) && (ch1[i] <= pivot)) ||
+               ((i >= bound) && (ch1[i] > pivot)))) {
+            fprintf(stderr, "Bad value %u at %zu for pivot = %u, size = %zu,"
+                    " bound = %zu, pre = %zu, post = %zu\n",
+                    ch1[i], i, pivot, size, bound, pre_align, post_align);
+            abort();
+        }
     }
 #endif
 
@@ -507,7 +514,7 @@ QSelect(
     uint8_t min_pivot = 0;
     uint8_t max_pivot = (uint8_t) ~0u;
 
-    while ((size > 1) && (min_pivot < max_pivot)) {
+    while ((size > 1) && (min_pivot <= max_pivot)) {
         // Get our pivot. Random is "good enough" for O(n) in most cases.
         size_t pivot_idx = ((size_t) (unsigned int) rand()) % size;
         uint8_t pivot = ch1[pivot_idx];
@@ -548,12 +555,12 @@ MedianPartition(
 
     // Partition across the median.
     size_t lo_size = Partition(ch1, ch2, ch3, size, median);
-    assert(lo_size > 0);
+    assert(lo_size > mid);
 
     // Partition again across (median - 1) to force all median values to the
     // middle of the array.
     if (median > 0) {
-        Partition(ch1, ch2, ch3, lo_size, median - 1);
+        assert(Partition(ch1, ch2, ch3, lo_size, median - 1) <= mid);
     }
 
     return mid;

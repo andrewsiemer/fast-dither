@@ -187,6 +187,7 @@ QuantizedPaletteForImage(DTImage *image, size_t size)
 
     palette->colors = XMalloc(size*sizeof(int)*3);
     palette->size = size;
+    printf("Image size: (w, h) = (%zu, %zu)\n", image->width, image->height);
 
     unsigned long long ts1, ts2;
     TIMESTAMP(ts1);

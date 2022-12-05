@@ -271,8 +271,8 @@ MCSplit(
     hi->size -= lo->size;
 
     // Shrink the value range of the cubes.
-    MCShrinkCube(lo, time);
-    MCShrinkCube(hi, time);
+    //MCShrinkCube(lo, time);
+    //MCShrinkCube(hi, time);
 }
 
 static DTPixel
@@ -284,6 +284,23 @@ MCCubeAverage(
         .g = (cube->max.g + cube->min.g) >> 1,
         .b = (cube->max.b + cube->min.b) >> 1
     };
+}
+
+static void
+MCQuantizeNext(
+    MCCube *cubes,
+    size_t size,
+    mc_byte_t level,
+    mc_time_t *time
+) {
+    MCShrinkCube(&cubes[0], time);
+
+    if (level > 0) {
+        size_t offset = size >> 1;
+        MCSplit(&cubes[0], &cubes[offset], time);
+        MCQuantizeNext(&cubes[0], offset, level - 1, time);
+        MCQuantizeNext(&cubes[offset], size - offset, level - 1, time);
+    }
 }
 
 DTPalette *
@@ -304,6 +321,10 @@ MCQuantizeData(
        .b = img->b,
        .size = size
     };
+
+    MCQuantizeNext(ws->cubes, ws->palette->size, ws->level, &time);
+
+#if 0
     MCShrinkCube(ws->cubes, &time);
 
     /* remaining cubes */
@@ -328,6 +349,7 @@ MCQuantizeData(
             iLevel++;
         }
     }
+#endif
 
     /* find final cube averages */
     for (size_t i = 0; i < ws->palette->size; i++) {
