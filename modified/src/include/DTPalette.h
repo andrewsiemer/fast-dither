@@ -26,5 +26,6 @@ DTPalettePacked *StandardPaletteBW(size_t size);
 DTPalettePacked *StandardPaletteRGB(void);
 
 DTPixel FindClosestColorFromPalette(DTPixel pixel, DTPalettePacked *palette);
+DTPixel FindClosestColorFromPaletteDiff(DTPixelDiff pixel, DTPalettePacked *palette);
 
 #endif

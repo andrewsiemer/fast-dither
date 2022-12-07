@@ -15,20 +15,10 @@
 #include <stdio.h>
 #include <string.h>
 
-/*
-void PRINT_M256_EPI16(__m256i input)
-{
-    int16_t *temp_array;
-    posix_memalign((void**) &temp_array, 64, 16 * sizeof(int16_t));
-    _mm256_store_si256((__m256i*) temp_array, input);
-    for (size_t i = 0; i < 16; i++)
-        printf("%d ", temp_array[i]);
-    printf("\n");
-    free(temp_array);
-}
+/**
+ * 
 */
-
-inline int16_t fsdither_kernel_scalar(int16_t diff_3, int16_t diff_2, int16_t diff_1, int16_t diff_0,
+static int16_t fsdither_kernel_scalar(int16_t diff_3, int16_t diff_2, int16_t diff_1, int16_t diff_0,
                                    int16_t original)
 {
     diff_3 = diff_3 / 16;
@@ -138,16 +128,17 @@ static void fsdither_kernel_simd(int16_t *input, // Array A
 static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, size_t width, size_t height,
                      DTPalettePacked *palette)
 {
-    unsigned long color_size = height * width * sizeof(int16_t);
+    unsigned long color_size = height * width;
     int16_t throwaway[16];
     
     for (size_t i = 0; i < height / 16; i++)
     {
         // Constant calculation
         const size_t offset = i*16*width;
+        const size_t next_offset = (i+1)*16*width;
 
         // Startup
-        for (size_t j = 0; j < 3; j++) //TODO: min
+        for (size_t j = 0; j < MIN(3, width); j++)
         {
             DTPixelDiff input;
             DTPixel output;
@@ -160,7 +151,7 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
                     input.r = (byte) MAX(MIN(shifted_output[offset+color_size*0], 255), 0);
                     input.g = (byte) MAX(MIN(shifted_output[offset+color_size*1], 255), 0);
                     input.b = (byte) MAX(MIN(shifted_output[offset+color_size*2], 255), 0);
-                    output = FindClosestColorFromPalette(input, palette);
+                    output = FindClosestColorFromPaletteDiff(input, palette);
                     shifted_output[offset+color_size*0] = output.r;
                     shifted_output[offset+color_size*1] = output.g;
                     shifted_output[offset+color_size*2] = output.b;
@@ -173,7 +164,7 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
                     input.r = (byte) MAX(MIN(shifted_output[offset+16+color_size*0], 255), 0);
                     input.g = (byte) MAX(MIN(shifted_output[offset+16+color_size*1], 255), 0);
                     input.b = (byte) MAX(MIN(shifted_output[offset+16+color_size*2], 255), 0);
-                    output = FindClosestColorFromPalette(input, palette);
+                    output = FindClosestColorFromPaletteDiff(input, palette);
                     shifted_output[offset+16+color_size*0] = output.r;
                     shifted_output[offset+16+color_size*1] = output.g;
                     shifted_output[offset+16+color_size*2] = output.b;
@@ -190,7 +181,7 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
                         input.r = (byte) MAX(MIN(shifted_output[offset+32+k+color_size*0], 255), 0);
                         input.g = (byte) MAX(MIN(shifted_output[offset+32+k+color_size*1], 255), 0);
                         input.b = (byte) MAX(MIN(shifted_output[offset+32+k+color_size*2], 255), 0);
-                        output = FindClosestColorFromPalette(input, palette);
+                        output = FindClosestColorFromPaletteDiff(input, palette);
                         shifted_output[offset+32+k+color_size*0] = output.r;
                         shifted_output[offset+32+k+color_size*1] = output.g;
                         shifted_output[offset+32+k+color_size*2] = output.b;
@@ -204,7 +195,7 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
         {
             for (size_t k = 0; k < 3; k++)
             {
-                int16_t* offset_output = i >= (height/16-1) ? &throwaway[0] : &shifted_output[(i+1)*16*width+k*color_size+j*16];
+                int16_t* offset_output = i >= (height/16-1) ? &throwaway[0] : &shifted_output[next_offset+k*color_size+j*16];
                 fsdither_kernel_simd(&shifted_input[(j-3)*16+offset+k*color_size],
                                      &shifted_output[(j-3)*16+offset+k*color_size],
                                      &shifted_output[j*16+offset+k*color_size], offset_output);
@@ -212,11 +203,11 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
 
             for (size_t k = 0; k < 16; k++)
             {
-                DTPixel input;
-                input.r = (byte) MAX(MIN(shifted_output[j*16+offset+0*color_size], 255), 0);
-                input.g = (byte) MAX(MIN(shifted_output[j*16+offset+1*color_size], 255), 0);
-                input.b = (byte) MAX(MIN(shifted_output[j*16+offset+2*color_size], 255), 0);
-                DTPixel output = FindClosestColorFromPalette(input, palette);
+                DTPixelDiff input;
+                input.r = (byte) MAX(MIN(shifted_output[j*16+offset+0*color_size+k], 255), 0);
+                input.g = (byte) MAX(MIN(shifted_output[j*16+offset+1*color_size+k], 255), 0);
+                input.b = (byte) MAX(MIN(shifted_output[j*16+offset+2*color_size+k], 255), 0);
+                DTPixel output = FindClosestColorFromPaletteDiff(input, palette);
                 shifted_output[j*16+offset+k+color_size*0] = output.r;
                 shifted_output[j*16+offset+k+color_size*1] = output.g;
                 shifted_output[j*16+offset+k+color_size*2] = output.b;
@@ -230,7 +221,7 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
  * 
  * 
  */
-static int16_t* shift_memory(uint32_t *interleaved, size_t width, size_t height,
+static int16_t* shift_memory(DTPixel *pixels, size_t width, size_t height,
                         size_t *new_width, size_t *new_height)
 {
     size_t padded_width = (height <= 16) ? width + 2*(height-1) : width + 2*(16-1);
@@ -247,13 +238,13 @@ static int16_t* shift_memory(uint32_t *interleaved, size_t width, size_t height,
     {
         for (size_t j = 0; j < width; j++)
         {
-            uint32_t val = interleaved[i*width+j];
+            DTPixel val = pixels[i*width+j];
             size_t shift_index = (i/16)*16*padded_width + (j+(i%16)*2)*16 + (i%16); // TODO: Fix
 
             //printf("%ld\n", shift_index);
-            shifted_memory[shift_index + 0] = (val >> 16) & 0xFF;
-            shifted_memory[shift_index + 1*color_size] = (val >> 8) & 0xFF;
-            shifted_memory[shift_index + 2*color_size] =  (val >> 0) & 0xFF;
+            shifted_memory[shift_index + 0] = val.r;
+            shifted_memory[shift_index + 1*color_size] = val.g;
+            shifted_memory[shift_index + 2*color_size] =  val.b;
         }
     }
 
@@ -266,7 +257,7 @@ static int16_t* shift_memory(uint32_t *interleaved, size_t width, size_t height,
 /**
  * 
  */
-static void deshift_memory(uint32_t* interleaved, int16_t* shifted, size_t width, size_t height,
+static void deshift_memory(DTPixel *pixels, int16_t* shifted, size_t width, size_t height,
                         size_t padded_width, size_t padded_height)
 {
     unsigned long color_size = padded_height * padded_width;
@@ -276,10 +267,9 @@ static void deshift_memory(uint32_t* interleaved, int16_t* shifted, size_t width
         for (size_t j = 0; j < width; j++)
         {
             size_t shift_index = (i/16)*16*padded_width +(j+(i%16)*2)*16 + (i%16);
-            printf("%ld\n", shift_index);
-            interleaved[i*width+j] = (shifted[shift_index + 0] << 16 | 
-                                        shifted[shift_index + 1*color_size] << 8 |
-                                        shifted[shift_index + 2*color_size]);
+            pixels[i*width+j].r = shifted[shift_index + 0];
+            pixels[i*width+j].g = shifted[shift_index + 1*color_size];
+            pixels[i*width+j].b = shifted[shift_index + 2*color_size];
         }
     }
 }
@@ -328,7 +318,7 @@ ApplyFloydSteinbergDither(DTImage *image, DTPalettePacked *palette)
 {
     size_t shifted_width;
     size_t shifted_height;
-    int16_t *shifted_memory = shift_memory((uint32_t*) image->pixels, image->width, image->height,
+    int16_t *shifted_memory = shift_memory(image->pixels, image->width, image->height,
                                             &shifted_width, &shifted_height);
     
     int16_t *shifted_output;
@@ -336,7 +326,7 @@ ApplyFloydSteinbergDither(DTImage *image, DTPalettePacked *palette)
     memset(shifted_output, 0, 3*shifted_width*shifted_height*sizeof(int16_t));
 
     fsdither_runner(shifted_memory, shifted_output, shifted_width, shifted_height, palette);
-    deshift_memory((uint32_t*)image->pixels, shifted_output, image->width, image->height,
+    deshift_memory(image->pixels, shifted_output, image->width, image->height,
                                              shifted_width, shifted_height);
     free(shifted_memory);
     free(shifted_output);

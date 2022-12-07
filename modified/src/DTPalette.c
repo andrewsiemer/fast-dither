@@ -71,6 +71,16 @@ StandardPaletteRGB()
 DTPixel
 FindClosestColorFromPalette(DTPixel needle, DTPalettePacked *palette)
 {
+    DTPixelDiff temp;
+    temp.r = needle.r;
+    temp.g = needle.g;
+    temp.b = needle.b;
+    return FindClosestColorFromPaletteDiff(temp, palette);
+}
+
+DTPixel
+FindClosestColorFromPaletteDiff(DTPixelDiff needle, DTPalettePacked *palette)
+{
     unsigned long long ts1, ts2;
     TIMESTAMP(ts1);
     // indices on the current iteration
