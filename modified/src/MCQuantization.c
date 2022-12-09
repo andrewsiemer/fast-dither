@@ -102,7 +102,7 @@ MCShrinkCube(
         r_min = g_min = b_min = _mm256_cmpeq_epi8(r_max, r_max);
 
         // Load chunks to get us a multiple of three chunks on each cycle.
-        for (size_t i = 0; i < (chunks % 9); i++) {
+        for (size_t i = 0; i < (chunks % 3); i++) {
             r_tmp1 = _mm256_load_si256(&r_align[i]);
             g_tmp1 = _mm256_load_si256(&g_align[i]);
             b_tmp1 = _mm256_load_si256(&b_align[i]);
@@ -115,93 +115,46 @@ MCShrinkCube(
         }
 
         // Perform remaining cycles, 3 chunks at a time.
-        for (size_t i = chunks % 9; i < chunks; i += 9) {
+        for (size_t i = chunks % 3; i < chunks; i += 3) {
             r_tmp1 = _mm256_load_si256(&r_align[i]);
+            g_tmp1 = _mm256_load_si256(&g_align[i]);
+            b_tmp1 = _mm256_load_si256(&b_align[i]);
             r_tmp2 = _mm256_load_si256(&r_align[i+1]);
+            g_tmp2 = _mm256_load_si256(&g_align[i+1]);
+            b_tmp2 = _mm256_load_si256(&b_align[i+1]);
             r_tmp3 = _mm256_load_si256(&r_align[i+2]);
-            g_tmp1 = _mm256_load_si256(&r_align[i+3]);
-            g_tmp2 = _mm256_load_si256(&r_align[i+4]);
-            g_tmp3 = _mm256_load_si256(&r_align[i+5]);
-            b_tmp1 = _mm256_load_si256(&r_align[i+6]);
-            b_tmp2 = _mm256_load_si256(&r_align[i+7]);
-            b_tmp3 = _mm256_load_si256(&r_align[i+8]);
+            g_tmp3 = _mm256_load_si256(&g_align[i+2]);
+            b_tmp3 = _mm256_load_si256(&b_align[i+2]);
+
+#if 0
+            __builtin_prefetch(&r_align[i+6]);
+            __builtin_prefetch(&g_align[i+6]);
+            __builtin_prefetch(&b_align[i+6]);
+            __builtin_prefetch(&r_align[i+7]);
+            __builtin_prefetch(&g_align[i+7]);
+            __builtin_prefetch(&b_align[i+7]);
+            __builtin_prefetch(&r_align[i+8]);
+            __builtin_prefetch(&g_align[i+8]);
+            __builtin_prefetch(&b_align[i+8]);
+#endif
+
             r_min = _mm256_min_epu8(r_min, r_tmp1);
-            r_max = _mm256_max_epu8(r_max, r_tmp1);
-            r_min = _mm256_min_epu8(r_min, r_tmp2);
-            r_max = _mm256_max_epu8(r_max, r_tmp2);
-            r_min = _mm256_min_epu8(r_min, r_tmp3);
-            r_max = _mm256_max_epu8(r_max, r_tmp3);
-            r_min = _mm256_min_epu8(r_min, g_tmp1);
-            r_max = _mm256_max_epu8(r_max, g_tmp1);
-            r_min = _mm256_min_epu8(r_min, g_tmp2);
-            r_max = _mm256_max_epu8(r_max, g_tmp2);
-            r_min = _mm256_min_epu8(r_min, g_tmp3);
-            r_max = _mm256_max_epu8(r_max, g_tmp3);
-            r_min = _mm256_min_epu8(r_min, b_tmp1);
-            r_max = _mm256_max_epu8(r_max, b_tmp1);
-            r_min = _mm256_min_epu8(r_min, b_tmp2);
-            r_max = _mm256_max_epu8(r_max, b_tmp2);
-            r_min = _mm256_min_epu8(r_min, b_tmp3);
-            r_max = _mm256_max_epu8(r_max, b_tmp3);
-        }
-
-        for (size_t i = chunks % 9; i < chunks; i += 9) {
-            r_tmp1 = _mm256_load_si256(&g_align[i]);
-            r_tmp2 = _mm256_load_si256(&g_align[i+1]);
-            r_tmp3 = _mm256_load_si256(&g_align[i+2]);
-            g_tmp1 = _mm256_load_si256(&g_align[i+3]);
-            g_tmp2 = _mm256_load_si256(&g_align[i+4]);
-            g_tmp3 = _mm256_load_si256(&g_align[i+5]);
-            b_tmp1 = _mm256_load_si256(&g_align[i+6]);
-            b_tmp2 = _mm256_load_si256(&g_align[i+7]);
-            b_tmp3 = _mm256_load_si256(&g_align[i+8]);
-            g_min = _mm256_min_epu8(g_min, r_tmp1);
-            g_max = _mm256_max_epu8(g_max, r_tmp1);
-            g_min = _mm256_min_epu8(g_min, r_tmp2);
-            g_max = _mm256_max_epu8(g_max, r_tmp2);
-            g_min = _mm256_min_epu8(g_min, r_tmp3);
-            g_max = _mm256_max_epu8(g_max, r_tmp3);
             g_min = _mm256_min_epu8(g_min, g_tmp1);
-            g_max = _mm256_max_epu8(g_max, g_tmp1);
-            g_min = _mm256_min_epu8(g_min, g_tmp2);
-            g_max = _mm256_max_epu8(g_max, g_tmp2);
-            g_min = _mm256_min_epu8(g_min, g_tmp3);
-            g_max = _mm256_max_epu8(g_max, g_tmp3);
-            g_min = _mm256_min_epu8(g_min, b_tmp1);
-            g_max = _mm256_max_epu8(g_max, b_tmp1);
-            g_min = _mm256_min_epu8(g_min, b_tmp2);
-            g_max = _mm256_max_epu8(g_max, b_tmp2);
-            g_min = _mm256_min_epu8(g_min, b_tmp3);
-            g_max = _mm256_max_epu8(g_max, b_tmp3);
-        }
-
-        for (size_t i = chunks % 9; i < chunks; i += 9) {
-            r_tmp1 = _mm256_load_si256(&b_align[i]);
-            r_tmp2 = _mm256_load_si256(&b_align[i+1]);
-            r_tmp3 = _mm256_load_si256(&b_align[i+2]);
-            g_tmp1 = _mm256_load_si256(&b_align[i+3]);
-            g_tmp2 = _mm256_load_si256(&b_align[i+4]);
-            g_tmp3 = _mm256_load_si256(&b_align[i+5]);
-            b_tmp1 = _mm256_load_si256(&b_align[i+6]);
-            b_tmp2 = _mm256_load_si256(&b_align[i+7]);
-            b_tmp3 = _mm256_load_si256(&b_align[i+8]);
-            b_min = _mm256_min_epu8(b_min, r_tmp1);
-            b_max = _mm256_max_epu8(b_max, r_tmp1);
-            b_min = _mm256_min_epu8(b_min, r_tmp2);
-            b_max = _mm256_max_epu8(b_max, r_tmp2);
-            b_min = _mm256_min_epu8(b_min, r_tmp3);
-            b_max = _mm256_max_epu8(b_max, r_tmp3);
-            b_min = _mm256_min_epu8(b_min, g_tmp1);
-            b_max = _mm256_max_epu8(b_max, g_tmp1);
-            b_min = _mm256_min_epu8(b_min, g_tmp2);
-            b_max = _mm256_max_epu8(b_max, g_tmp2);
-            b_min = _mm256_min_epu8(b_min, g_tmp3);
-            b_max = _mm256_max_epu8(b_max, g_tmp3);
             b_min = _mm256_min_epu8(b_min, b_tmp1);
-            b_max = _mm256_max_epu8(b_max, b_tmp1);
+            r_min = _mm256_min_epu8(r_min, r_tmp2);
+            g_min = _mm256_min_epu8(g_min, g_tmp2);
             b_min = _mm256_min_epu8(b_min, b_tmp2);
-            b_max = _mm256_max_epu8(b_max, b_tmp2);
+            r_min = _mm256_min_epu8(r_min, r_tmp3);
+            g_min = _mm256_min_epu8(g_min, g_tmp3);
             b_min = _mm256_min_epu8(b_min, b_tmp3);
+            r_max = _mm256_max_epu8(r_max, r_tmp1);
+            g_max = _mm256_max_epu8(g_max, g_tmp1);
+            b_max = _mm256_max_epu8(b_max, b_tmp1);
+            r_max = _mm256_max_epu8(r_max, r_tmp2);
+            g_max = _mm256_max_epu8(g_max, g_tmp2);
+            b_max = _mm256_max_epu8(b_max, b_tmp2);
+            r_max = _mm256_max_epu8(r_max, r_tmp3);
+            g_max = _mm256_max_epu8(g_max, g_tmp3);
             b_max = _mm256_max_epu8(b_max, b_tmp3);
         }
 
