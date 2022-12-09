@@ -41,11 +41,6 @@ typedef struct {
     uint8_t *b;
 } MCCube;
 
-typedef struct {
-    unsigned long long shrink_time;
-    unsigned long long part_time;
-} mc_time_t;
-
 struct mc_workspace_t {
     mc_byte_t level;
     MCCube *cubes;
@@ -130,6 +125,19 @@ MCShrinkCube(
             r_tmp3 = _mm256_load_si256(&r_align[i+2]);
             g_tmp3 = _mm256_load_si256(&g_align[i+2]);
             b_tmp3 = _mm256_load_si256(&b_align[i+2]);
+
+#if 0
+            __builtin_prefetch(&r_align[i+6]);
+            __builtin_prefetch(&g_align[i+6]);
+            __builtin_prefetch(&b_align[i+6]);
+            __builtin_prefetch(&r_align[i+7]);
+            __builtin_prefetch(&g_align[i+7]);
+            __builtin_prefetch(&b_align[i+7]);
+            __builtin_prefetch(&r_align[i+8]);
+            __builtin_prefetch(&g_align[i+8]);
+            __builtin_prefetch(&b_align[i+8]);
+#endif
+
             r_min = _mm256_min_epu8(r_min, r_tmp1);
             g_min = _mm256_min_epu8(g_min, g_tmp1);
             b_min = _mm256_min_epu8(b_min, b_tmp1);
@@ -359,13 +367,13 @@ MCQuantizeNext(
 DTPalette *
 MCQuantizeData(
     SplitImage *img,
-    MCWorkspace *ws
+    MCWorkspace *ws,
+    mc_time_t *time
 ) {
     assert(img);
     assert(ws);
 
     size_t size = img->w * img->h;
-    mc_time_t time = { .part_time = 0 };
 
     /* first cube */
     ws->cubes[0] = (MCCube) {
@@ -375,17 +383,32 @@ MCQuantizeData(
        .size = size
     };
 
-    MCQuantizeNext(ws->cubes, ws->palette->size, ws->level, &time);
+    MCQuantizeNext(ws->cubes, ws->palette->size, ws->level, time);
 
     /* find final cube averages */
     for (size_t i = 0; i < ws->palette->size; i++) {
         ws->palette->colors[i] = MCCubeAverage(&ws->cubes[i]);
     }
 
-    TIME_REPORT("Median Partition", 0, time.part_time);
-    TIME_REPORT("Cube Shrink", 0, time.shrink_time);
-
     DTPalette *ret = ws->palette;
     ws->palette = NULL;
     return ret;
+}
+
+void
+MCTimeInit(
+    mc_time_t *time
+) {
+    assert(time);
+    *time = (mc_time_t) { .part_time = 0, .shrink_time = 0 };
+}
+
+void
+MCTimeReport(
+    mc_time_t *time,
+    unsigned long long runs
+) {
+    (void)runs;
+    TIME_REPORT("Median Partition", 0, time->part_time);
+    TIME_REPORT("Cube Shrink", 0, time->shrink_time);
 }
