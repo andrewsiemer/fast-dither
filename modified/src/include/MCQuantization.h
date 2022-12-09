@@ -22,7 +22,13 @@ typedef struct mc_workspace_t MCWorkspace;
 
 typedef struct {
     unsigned long long shrink_time;
+    unsigned long long shrink_units;
     unsigned long long part_time;
+    unsigned long long part_units;
+    unsigned long long mid_time;
+    unsigned long long mid_units;
+    unsigned long long mc_time;
+    unsigned long long mc_units;
 } mc_time_t;
 
 MCWorkspace *MCWorkspaceMake(mc_byte_t level);

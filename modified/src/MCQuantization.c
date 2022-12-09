@@ -267,6 +267,7 @@ MCShrinkCube(
 
     TIMESTAMP(ts2);
     time->shrink_time += ts2 - ts1;
+    time->shrink_units += cube->size;
 }
 
 static color_dim_t
@@ -309,23 +310,25 @@ MCSplit(
     switch (dim) {
         case DIM_RED:
             TIMESTAMP(ts1);
-            mid = MedianPartition(lo->r, lo->g, lo->b, lo->size);
+            mid = MedianPartition(lo->r, lo->g, lo->b, lo->size, time);
             TIMESTAMP(ts2);
             break;
         case DIM_GREEN:
             TIMESTAMP(ts1);
-            mid = MedianPartition(lo->g, lo->r, lo->b, lo->size);
+            mid = MedianPartition(lo->g, lo->r, lo->b, lo->size, time);
             TIMESTAMP(ts2);
             break;
         case DIM_BLUE:
             TIMESTAMP(ts1);
-            mid = MedianPartition(lo->b, lo->g, lo->r, lo->size);
+            mid = MedianPartition(lo->b, lo->g, lo->r, lo->size, time);
             TIMESTAMP(ts2);
             break;
         default:
             assert(0);
     }
-    time->part_time += ts2 - ts1;
+
+    time->mid_time += (ts2 - ts1);
+    time->mid_units += lo->size;
 
     // Split the cubes by size.
     *hi = *lo;
@@ -373,6 +376,9 @@ MCQuantizeData(
     assert(img);
     assert(ws);
 
+    unsigned long long ts1, ts2;
+    TIMESTAMP(ts1);
+
     size_t size = img->w * img->h;
 
     /* first cube */
@@ -392,6 +398,11 @@ MCQuantizeData(
 
     DTPalette *ret = ws->palette;
     ws->palette = NULL;
+
+    TIMESTAMP(ts2);
+    time->mc_time += (ts2 - ts1);
+    time->mc_units += size;
+
     return ret;
 }
 
@@ -409,6 +420,27 @@ MCTimeReport(
     unsigned long long runs
 ) {
     (void)runs;
-    TIME_REPORT("Median Partition", 0, time->part_time);
-    TIME_REPORT("Cube Shrink", 0, time->shrink_time);
+
+    const double part_theoretical = (32.0/44.0); // FIXME
+    const double shrink_theoretical = (32.0/3.0);
+
+    double mc_time = TIME_NORM(0, time->mc_time);
+    double mc_pix = ((double)time->mc_units) / mc_time;
+
+    double mid_time = TIME_NORM(0, time->mid_time);
+    double mid_pix = ((double)time->mid_units) / mid_time;
+
+    double part_time = TIME_NORM(0, time->part_time);
+    double part_pix = ((double)time->part_units) / part_time;
+    double part_peak = (part_pix / part_theoretical) * 100;
+
+    double shrink_time = TIME_NORM(0, time->shrink_time);
+    double shrink_pix = ((double)time->shrink_units) / shrink_time;
+    double shrink_peak = (shrink_pix / shrink_theoretical) * 100;
+
+    printf("Kernel%14sCycles%14sPix/cyc%13s%%Peak\n", "", "", "");
+    printf("MCQuantization%6s%-20.6lf%-20.6lf--\n", "", mc_time, mc_pix);
+    printf("Median Partition%4s%-20.6lf%-20.6lf--\n", "", mid_time, mid_pix);
+    printf("Partition%11s%-20.6lf%-20.6lf%.2lf%%\n", "", part_time, part_pix, part_peak);
+    printf("Shrink%14s%-20.6lf%-20.6lf%.2lf%%\n", "", shrink_time, shrink_pix, shrink_peak);
 }

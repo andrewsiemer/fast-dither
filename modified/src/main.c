@@ -189,9 +189,8 @@ QuantizedPaletteForImage(DTImage *image, size_t size)
     palette->size = size;
     printf("Image size: (w, h) = (%zu, %zu)\n", image->width, image->height);
 
-    unsigned long long ts1, ts2;
     mc_time_t mc_time;
-    TIMESTAMP(ts1);
+    MCTimeInit(&mc_time);
 
     DTPalette *mc = MCQuantizeData(img, ws, &mc_time);
 
@@ -201,9 +200,7 @@ QuantizedPaletteForImage(DTImage *image, size_t size)
         palette->colors[palette->size*2+i] = mc->colors[i].b;
     }
 
-    TIMESTAMP(ts2);
     MCTimeReport(&mc_time, 1);
-    TIME_REPORT("MCQuantization", ts1, ts2);
 
     MCWorkspaceDestroy(ws);
     DestroySplitImage(img);

@@ -416,6 +416,8 @@ Partition(
     size_t size,
     uint8_t pivot
 ) {
+    // FIXME: There is probably a better way to deal with the unaligned bits.
+
     // Get the offsets necessary to align the size and arrays to a 32-byte
     // bound for the aligned partition function.
     size_t pre_align = 32 - (((uintptr_t) ch1) & 0x1F);
@@ -496,7 +498,8 @@ QSelect(
     uint8_t *ch2,
     uint8_t *ch3,
     size_t size,
-    size_t k
+    size_t k,
+    mc_time_t *time
 ) {
     assert(ch1);
     assert(ch2);
@@ -511,6 +514,8 @@ QSelect(
     uint8_t max_pivot = (uint8_t) ~0u;
 
     while ((size > 1) && (min_pivot <= max_pivot)) {
+        unsigned long long ts1, ts2;
+
         // Get our pivot. Random is "good enough" for O(n) in most cases.
         size_t pivot_idx = ((size_t) (unsigned int) rand()) % size;
         uint8_t pivot = ch1[pivot_idx];
@@ -518,8 +523,13 @@ QSelect(
         pivot = MAX(pivot, min_pivot);
 
         // Partition across our pivot.
+        TIMESTAMP(ts1);
         size_t mid = Partition(ch1, ch2, ch3, size, pivot);
+        TIMESTAMP(ts2);
         assert(mid <= size);
+
+        time->part_units += size;
+        time->part_time += (ts2 - ts1);
 
         if (k < mid) {
             size = mid;
@@ -543,20 +553,33 @@ MedianPartition(
     uint8_t *ch1,
     uint8_t *ch2,
     uint8_t *ch3,
-    size_t size
+    size_t size,
+    mc_time_t *time
 ) {
+    unsigned long long ts1, ts2;
+
     // Use the quickselect algorithm to find the median.
     size_t mid = size >> 1;
-    uint8_t median = QSelect(ch1, ch2, ch3, size, mid);
+    uint8_t median = QSelect(ch1, ch2, ch3, size, mid, time);
 
     // Partition across the median.
+    TIMESTAMP(ts1);
     size_t lo_size = Partition(ch1, ch2, ch3, size, median);
+    TIMESTAMP(ts2);
     assert(lo_size > mid);
+
+    time->part_units += size;
+    time->part_time += (ts2 - ts1);
 
     // Partition again across (median - 1) to force all median values to the
     // middle of the array.
     if (median > 0) {
+        TIMESTAMP(ts1);
         assert(Partition(ch1, ch2, ch3, lo_size, median - 1) <= mid);
+        TIMESTAMP(ts2);
+
+        time->part_units += lo_size;
+        time->part_time += (ts2 - ts1);
     }
 
     return mid;
