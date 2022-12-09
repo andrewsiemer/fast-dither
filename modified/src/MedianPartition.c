@@ -166,15 +166,18 @@ do {\
     loc = (unsigned int) __builtin_popcount(_move_mask.s[0]);\
     hic = (unsigned int) __builtin_popcount(_move_mask.s[1]);\
     \
+    /* Load in the 8-element sort vectors. */\
+    __attribute__((aligned(32))) uint64_t _sort8[4];\
+    _sort8[0] = * (uint64_t*) sort1b_4x8[_move_mask.b[0]];\
+    _sort8[1] = * (uint64_t*) sort1b_4x8[_move_mask.b[1]];\
+    _sort8[2] = * (uint64_t*) sort1b_4x8[_move_mask.b[2]];\
+    _sort8[3] = * (uint64_t*) sort1b_4x8[_move_mask.b[3]];\
+    \
     do {\
-        register __m256i _tmp8_0, _tmp8_1, _tmp8_2, _tmp8_3;\
-        register __m256i _pre_roll, _tmp16_lo, _tmp16_hi;\
+        register __m256i _tmp8, _pre_roll, _tmp16_lo, _tmp16_hi;\
         /* Load in the 64-bit vectors that will sort each 64-bit subvector. */\
         _pre_roll = _mm256_load_si256((__m256i*) rrl_shuffle_hi[(loc) & 0xF]);\
-        _tmp8_0 = _mm256_loadu_si256((__m256i*) sort1b_4x8[_move_mask.b[0] + 3]);\
-        _tmp8_1 = _mm256_loadu_si256((__m256i*) sort1b_4x8[_move_mask.b[1] + 2]);\
-        _tmp8_2 = _mm256_loadu_si256((__m256i*) sort1b_4x8[_move_mask.b[2] + 1]);\
-        _tmp8_3 = _mm256_loadu_si256((__m256i*) sort1b_4x8[_move_mask.b[3] + 0]);\
+        _tmp8 = _mm256_load_si256((__m256i*) _sort8);\
         \
         /* Do the same for the 128-bit sorting vectors */\
         _tmp16_lo = _mm256_loadu_si256((__m256i*) sort1b_2x16[_lo_loc + 1]);\
@@ -182,13 +185,10 @@ do {\
         \
         /* Blend the 8/16 element sort vectors together. Then 16-sort the */\
         /* 8-sort vector to get a 16-sort vector. */\
-        _tmp8_0 = _mm256_blend_epi32(_tmp8_0, _tmp8_2, 0x30);\
-        _tmp8_1 = _mm256_blend_epi32(_tmp8_1, _tmp8_3, 0xC0);\
         _tmp16_lo = _mm256_blend_epi32(_tmp16_lo, _tmp16_hi, 0xF0);\
-        _tmp16_lo = _mm256_shuffle_epi8(_tmp16_lo, _pre_roll);\
-        _tmp8_1 = _mm256_add_epi8(_tmp8_1, _sort_mask);\
-        _sort_mask = _mm256_blend_epi32(_tmp8_0, _tmp8_1, 0xCC);\
+        _sort_mask = _mm256_add_epi8(_sort_mask, _tmp8);\
         _sort_mask = _mm256_shuffle_epi8(_sort_mask, _tmp16_lo);\
+        _sort_mask = _mm256_shuffle_epi8(_sort_mask, _pre_roll);\
     } while (0);\
     \
     a1 = _mm256_shuffle_epi8(a1, _sort_mask);\

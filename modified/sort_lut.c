@@ -19,16 +19,12 @@ do {\
 
 static void print_sort_elem_x8(unsigned int b) {
     unsigned int arr[8] = {0};
-
-    if ((b >= 3) && ((b-3) < 256)) {
-        b -= 3;
-        int lo = 0, hi = 7;
-        for (unsigned int i = 0; i < 8; i++) {
-            if ((b >> i) & 1) {
-                arr[hi--] = i;
-            } else {
-                arr[lo++] = i;
-            }
+    int lo = 0, hi = 7;
+    for (unsigned int i = 0; i < 8; i++) {
+        if ((b >> i) & 1) {
+            arr[hi--] = i;
+        } else {
+            arr[lo++] = i;
         }
     }
 
@@ -41,8 +37,8 @@ static void print_sort_elem_x8(unsigned int b) {
 }
 
 static void print_sort_x8(void) {
-    printf("__attribute__((aligned(32))) static const uint8_t sort1b_4x8[262][8] = {\n");
-    for (unsigned int i = 0; i < 262; i++) {
+    printf("__attribute__((aligned(32))) static const uint8_t sort1b_4x8[256][8] = {\n");
+    for (unsigned int i = 0; i < 256; i++) {
         DELIM(i, ",\n");
         print_sort_elem_x8(i);
     }
