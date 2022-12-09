@@ -200,7 +200,7 @@ QuantizedPaletteForImage(DTImage *image, size_t size)
         palette->colors[palette->size*2+i] = mc->colors[i].b;
     }
 
-    MCTimeReport(&mc_time, 1);
+    MCTimeReport(&mc_time);
 
     MCWorkspaceDestroy(ws);
     DestroySplitImage(img);

@@ -28,6 +28,12 @@ __attribute__((aligned (32))) static const uint8_t shuffle_adjust[32] = {
     0, 0, 0, 0, 0, 0, 0, 0, 8, 8, 8, 8, 8, 8, 8, 8
 };
 
+/// @brief Used to reverse the 8-bit elements in a register.
+__attribute__((aligned (32))) static const uint8_t shuffle_reverse[32] = {
+    15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
+    15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0
+};
+
 /// @brief Used to adjust the signed cmp_epi8 to unsigned.
 __attribute__((aligned (32))) static const uint8_t cmp_adjust[32] = {
     128, 128, 128, 128, 128, 128, 128, 128,
@@ -414,7 +420,8 @@ Partition(
     uint8_t *ch2,
     uint8_t *ch3,
     size_t size,
-    uint8_t pivot
+    uint8_t pivot,
+    mc_time_t *time
 ) {
     // FIXME: There is probably a better way to deal with the unaligned bits.
 
@@ -429,6 +436,9 @@ Partition(
     size_t bound = size;
     if ((pre_align + post_align) < size) {
         size_t align_size = (size - (pre_align + post_align)) / 32;
+
+        unsigned long long ts1, ts2;
+        TIMESTAMP(ts1);
         bound = AlignPartition(
             (__m256i*) &ch1[pre_align],
             (__m256i*) &ch2[pre_align],
@@ -436,35 +446,93 @@ Partition(
             align_size,
             pivot
         );
+        TIMESTAMP(ts2);
+        time->align_time += (ts2 - ts1);
+        time->align_units += align_size * 32;
 
+        // Find the actual bound, now that we're mostly sorted.
         bound = (bound * 32) + pre_align;
         while ((bound < size) && (ch1[bound] <= pivot)) bound++;
-    }
 
-    /* Partition the unaligned parts. */
+        // Sort the not-aligned pre parts.
+        register __m256i u1, u2, u3, t1, t2, t3, p, adj;
+        size_t target = (size_t) MAX(0, ((ptrdiff_t)bound) - 32);
+        adj = _mm256_load_si256((__m256i*) cmp_adjust);
+        union {
+            float f;
+            uint8_t p[4];
+        } crime = { .p = { pivot, pivot, pivot, pivot } };
+        p = _mm256_castps_si256(_mm256_broadcast_ss(&crime.f));
+        p = _mm256_add_epi8(adj, p);
+        u1 = _mm256_loadu_si256((__m256i*) &ch1[0]);
+        u2 = _mm256_loadu_si256((__m256i*) &ch2[0]);
+        u3 = _mm256_loadu_si256((__m256i*) &ch3[0]);
+        t1 = _mm256_loadu_si256((__m256i*) &ch1[target]);
+        t2 = _mm256_loadu_si256((__m256i*) &ch2[target]);
+        t3 = _mm256_loadu_si256((__m256i*) &ch3[target]);
 
-    for (size_t lo = 0; (lo < pre_align) && (lo < bound);) {
-        if (ch1[lo] > pivot) {
-            bound--;
-            SWAP(ch1[lo], ch1[bound]);
-            SWAP(ch2[lo], ch2[bound]);
-            SWAP(ch3[lo], ch3[bound]);
-        } else {
-            lo++;
+        size_t count;
+        ARGMSORT1X32(p, adj, u1, u2, u3, count);
+        bound = (size_t) MAX(32 - ((ptrdiff_t)count), (ptrdiff_t) (bound - count));
+        do {
+            register __m256i tmp = _mm256_load_si256((__m256i*) shuffle_reverse);
+            t1 = _mm256_shuffle_epi8(t1, tmp);
+            t2 = _mm256_shuffle_epi8(t2, tmp);
+            t3 = _mm256_shuffle_epi8(t3, tmp);
+            t1 = _mm256_permute2x128_si256(t1, t1, 0x01);
+            t2 = _mm256_permute2x128_si256(t2, t2, 0x01);
+            t3 = _mm256_permute2x128_si256(t3, t3, 0x01);
+        } while (0);
+
+        _mm256_storeu_si256((__m256i*) &ch1[0], t1);
+        _mm256_storeu_si256((__m256i*) &ch2[0], t2);
+        _mm256_storeu_si256((__m256i*) &ch3[0], t3);
+        _mm256_storeu_si256((__m256i*) &ch1[target], u1);
+        _mm256_storeu_si256((__m256i*) &ch2[target], u2);
+        _mm256_storeu_si256((__m256i*) &ch3[target], u3);
+
+        // Sort the not-aligned post parts.
+        size_t base = size - 32;
+        target = MIN(base, bound);
+        u1 = _mm256_loadu_si256((__m256i*) &ch1[base]);
+        u2 = _mm256_loadu_si256((__m256i*) &ch2[base]);
+        u3 = _mm256_loadu_si256((__m256i*) &ch3[base]);
+        t1 = _mm256_loadu_si256((__m256i*) &ch1[target]);
+        t2 = _mm256_loadu_si256((__m256i*) &ch2[target]);
+        t3 = _mm256_loadu_si256((__m256i*) &ch3[target]);
+
+        ARGMSORT1X32(p, adj, u1, u2, u3, count);
+        bound = MIN(size - count, bound + (32 - count));
+        do {
+            register __m256i tmp = _mm256_load_si256((__m256i*) shuffle_reverse);
+            t1 = _mm256_shuffle_epi8(t1, tmp);
+            t2 = _mm256_shuffle_epi8(t2, tmp);
+            t3 = _mm256_shuffle_epi8(t3, tmp);
+            t1 = _mm256_permute2x128_si256(t1, t1, 0x01);
+            t2 = _mm256_permute2x128_si256(t2, t2, 0x01);
+            t3 = _mm256_permute2x128_si256(t3, t3, 0x01);
+        } while (0);
+
+        _mm256_storeu_si256((__m256i*) &ch1[base], t1);
+        _mm256_storeu_si256((__m256i*) &ch2[base], t2);
+        _mm256_storeu_si256((__m256i*) &ch3[base], t3);
+        _mm256_storeu_si256((__m256i*) &ch1[target], u1);
+        _mm256_storeu_si256((__m256i*) &ch2[target], u2);
+        _mm256_storeu_si256((__m256i*) &ch3[target], u3);
+    } else {
+        size_t lo = 0, hi = size;
+        while (lo < hi) {
+            if (ch1[lo] > pivot) {
+                hi--;
+                SWAP(ch1[lo], ch1[hi]);
+                SWAP(ch2[lo], ch2[hi]);
+                SWAP(ch3[lo], ch3[hi]);
+            } else {
+                lo++;
+            }
         }
-    }
 
-    bound = MIN(bound, size - post_align);
-
-    for (size_t hi = size - 1; (hi >= (size - post_align)) && (hi >= bound);) {
-        if (ch1[hi] <= pivot) {
-            SWAP(ch1[hi], ch1[bound]);
-            SWAP(ch2[hi], ch2[bound]);
-            SWAP(ch3[hi], ch3[bound]);
-            bound++;
-        } else {
-            hi--;
-        }
+        bound = hi;
     }
 
 #if 0
@@ -524,7 +592,7 @@ QSelect(
 
         // Partition across our pivot.
         TIMESTAMP(ts1);
-        size_t mid = Partition(ch1, ch2, ch3, size, pivot);
+        size_t mid = Partition(ch1, ch2, ch3, size, pivot, time);
         TIMESTAMP(ts2);
         assert(mid <= size);
 
@@ -564,7 +632,7 @@ MedianPartition(
 
     // Partition across the median.
     TIMESTAMP(ts1);
-    size_t lo_size = Partition(ch1, ch2, ch3, size, median);
+    size_t lo_size = Partition(ch1, ch2, ch3, size, median, time);
     TIMESTAMP(ts2);
     assert(lo_size > mid);
 
@@ -575,7 +643,7 @@ MedianPartition(
     // middle of the array.
     if (median > 0) {
         TIMESTAMP(ts1);
-        assert(Partition(ch1, ch2, ch3, lo_size, median - 1) <= mid);
+        assert(Partition(ch1, ch2, ch3, lo_size, median - 1, time) <= mid);
         TIMESTAMP(ts2);
 
         time->part_units += lo_size;

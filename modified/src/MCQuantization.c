@@ -416,12 +416,9 @@ MCTimeInit(
 
 void
 MCTimeReport(
-    mc_time_t *time,
-    unsigned long long runs
+    mc_time_t *time
 ) {
-    (void)runs;
-
-    const double part_theoretical = (32.0/44.0); // FIXME
+    const double part_theoretical = (32.0/21.0);
     const double shrink_theoretical = (32.0/3.0);
 
     double mc_time = TIME_NORM(0, time->mc_time);
@@ -434,6 +431,10 @@ MCTimeReport(
     double part_pix = ((double)time->part_units) / part_time;
     double part_peak = (part_pix / part_theoretical) * 100;
 
+    double align_time = TIME_NORM(0, time->align_time);
+    double align_pix = ((double)time->align_units) / align_time;
+    double align_peak = (align_pix / part_theoretical) * 100;
+
     double shrink_time = TIME_NORM(0, time->shrink_time);
     double shrink_pix = ((double)time->shrink_units) / shrink_time;
     double shrink_peak = (shrink_pix / shrink_theoretical) * 100;
@@ -442,5 +443,6 @@ MCTimeReport(
     printf("MCQuantization%6s%-20.6lf%-20.6lf--\n", "", mc_time, mc_pix);
     printf("Median Partition%4s%-20.6lf%-20.6lf--\n", "", mid_time, mid_pix);
     printf("Partition%11s%-20.6lf%-20.6lf%.2lf%%\n", "", part_time, part_pix, part_peak);
+    printf("Align Partition%5s%-20.6lf%-20.6lf%.2lf%%\n", "", align_time, align_pix, align_peak);
     printf("Shrink%14s%-20.6lf%-20.6lf%.2lf%%\n", "", shrink_time, shrink_pix, shrink_peak);
 }
