@@ -167,9 +167,9 @@ do {\
     } while (0);\
     \
     /* Determine how many high elements are in each section. */\
+    loc = (unsigned int) __builtin_popcount(_move_mask.s[0]);\
     _lo_loc = (uint8_t) (unsigned int) __builtin_popcount(_move_mask.b[0]);\
     _hi_loc = (uint8_t) (unsigned int) __builtin_popcount(_move_mask.b[2]);\
-    loc = (unsigned int) __builtin_popcount(_move_mask.s[0]);\
     hic = (unsigned int) __builtin_popcount(_move_mask.s[1]);\
     \
     /* Load in the 8-element sort vectors. */\

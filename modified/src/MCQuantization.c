@@ -357,14 +357,14 @@ MCQuantizeNext(
     mc_byte_t level,
     mc_time_t *time
 ) {
-    MCShrinkCube(&cubes[0], time);
+    if (level == 0) { return; }
 
-    if (level > 0) {
-        size_t offset = size >> 1;
-        MCSplit(&cubes[0], &cubes[offset], time);
-        MCQuantizeNext(&cubes[0], offset, level - 1, time);
-        MCQuantizeNext(&cubes[offset], size - offset, level - 1, time);
-    }
+    size_t offset = size >> 1;
+    MCSplit(&cubes[0], &cubes[offset], time);
+    MCShrinkCube(&cubes[0], time);
+    MCShrinkCube(&cubes[offset], time);
+    MCQuantizeNext(&cubes[0], offset, level - 1, time);
+    MCQuantizeNext(&cubes[offset], size - offset, level - 1, time);
 }
 
 DTPalette *
@@ -389,6 +389,7 @@ MCQuantizeData(
        .size = size
     };
 
+    MCShrinkCube(&ws->cubes[0], time);
     MCQuantizeNext(ws->cubes, ws->palette->size, ws->level, time);
 
     /* find final cube averages */
@@ -418,7 +419,7 @@ void
 MCTimeReport(
     mc_time_t *time
 ) {
-    const double part_theoretical = (32.0/21.0);
+    const double part_theoretical = (32.0/25.0);
     const double shrink_theoretical = (32.0/3.0);
 
     double mc_time = TIME_NORM(0, time->mc_time);
