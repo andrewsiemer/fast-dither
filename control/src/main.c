@@ -186,8 +186,8 @@ QuantizedPaletteForImage(DTImage *image, size_t size)
     palette->colors = XMalloc(sizeof(DTPixel) * size);
     palette->size = size;
 
-    unsigned long long ts1, ts2;
-    TIMESTAMP(ts1);
+    mc_time_t mc_time;
+    MCTimeInit(&mc_time);
 
     for (size_t i = 0; i < image->resolution; i++)
         data[i] = MCTripletMake(
@@ -196,7 +196,7 @@ QuantizedPaletteForImage(DTImage *image, size_t size)
             image->pixels[i].b
         );
 
-    colors = MCQuantizeData(data, image->resolution, ws);
+    colors = MCQuantizeData(data, image->resolution, ws, &mc_time);
 
     for (size_t i = 0; i < size; i++) {
         palette->colors[i].r = colors[i].value[0];
@@ -204,12 +204,7 @@ QuantizedPaletteForImage(DTImage *image, size_t size)
         palette->colors[i].b = colors[i].value[2];
     }
 
-    TIMESTAMP(ts2);
-    TIME_REPORT("MCQuantization", ts1, ts2);
-
-    printf("MCQuantization spent %llu cycles shrinking %llu pixels at %lf iops/cycle\n",
-           shrink_cycles, shrink_pixels,
-           (shrink_pixels * 6.0) / ((MAX_FREQ / BASE_FREQ) * shrink_cycles));
+    MCTimeReport(&mc_time);
 
     MCWorkspaceDestroy(ws);
     free(data);

@@ -21,6 +21,10 @@ do {\
     (b) = _tmp;\
 } while (0)
 
+// mins/maxes two values.
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+
 // Outputs a timestamp into the given unsigned long long.
 #define TIMESTAMP(ts)\
 do {\
@@ -31,7 +35,10 @@ do {\
 
 // Reports the time of a given test based on the given stamps and test name.
 #define TIME_REPORT(s, ts1, ts2)\
-    printf("Test %s completed in %lf cycles\n",\
-           s, (ts2 - ts1) * (MAX_FREQ/BASE_FREQ))
+    printf("%s: %lf,\n", s,\
+        (ts2 - ts1) * (MAX_FREQ/BASE_FREQ))
+
+// Normalizes a time difference against frequency.
+#define TIME_NORM(ts1, ts2) (((ts2) - (ts1)) / (MAX_FREQ/BASE_FREQ))
 
 #endif /* __UTIL_MACRO_H__ */
