@@ -27,9 +27,12 @@
  * Used to track which dimension has the greatest range.
  */
 typedef enum {
-    DIM_RED,
-    DIM_GREEN,
-    DIM_BLUE
+    DIM_RGB = 0x7,
+    DIM_RBG = 0x6,
+    DIM_GRB = 0x3,
+    DIM_GBR = 0x1,
+    DIM_BRG = 0x4,
+    DIM_BGR = 0x0
 } color_dim_t;
 
 typedef struct {
@@ -278,13 +281,11 @@ MCCalculateBiggestDimension(
     mc_byte_t g = cube->max.g - cube->min.g;
     mc_byte_t b = cube->max.b - cube->min.b;
 
-    if (r >= g && r >= b) {
-        return DIM_RED;
-    } else if (g >= r && g >= b) {
-        return DIM_GREEN;
-    } else {
-        return DIM_BLUE;
-    }
+    int r_gt_g = r >= g;
+    int r_gt_b = r >= b;
+    int g_gt_b = g >= b;
+
+    return (color_dim_t) ((r_gt_g << 2) | (r_gt_b << 1) | g_gt_b);
 }
 
 /**
@@ -308,17 +309,32 @@ MCSplit(
     size_t mid = 0;
     unsigned long long ts1, ts2;
     switch (dim) {
-        case DIM_RED:
+        case DIM_RGB:
             TIMESTAMP(ts1);
             mid = MedianPartition(lo->r, lo->g, lo->b, lo->size, time);
             TIMESTAMP(ts2);
             break;
-        case DIM_GREEN:
+        case DIM_RBG:
+            TIMESTAMP(ts1);
+            mid = MedianPartition(lo->r, lo->b, lo->g, lo->size, time);
+            TIMESTAMP(ts2);
+            break;
+        case DIM_GRB:
             TIMESTAMP(ts1);
             mid = MedianPartition(lo->g, lo->r, lo->b, lo->size, time);
             TIMESTAMP(ts2);
             break;
-        case DIM_BLUE:
+        case DIM_GBR:
+            TIMESTAMP(ts1);
+            mid = MedianPartition(lo->g, lo->b, lo->r, lo->size, time);
+            TIMESTAMP(ts2);
+            break;
+        case DIM_BRG:
+            TIMESTAMP(ts1);
+            mid = MedianPartition(lo->b, lo->r, lo->g, lo->size, time);
+            TIMESTAMP(ts2);
+            break;
+        case DIM_BGR:
             TIMESTAMP(ts1);
             mid = MedianPartition(lo->b, lo->g, lo->r, lo->size, time);
             TIMESTAMP(ts2);

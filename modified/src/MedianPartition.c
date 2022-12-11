@@ -136,6 +136,44 @@ __attribute__((aligned (32))) static const uint8_t rrl_shuffle_hi[16][32] = {
       15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 }
 };
 
+#define USE_EXACT_COMPARE 0
+
+/**
+ * @brief Does the comparison
+ */
+#if USE_EXACT_COMPARE == 0
+#define DO_COMPARE(pivots, p2p, p3p, adjust, a1, a2, a3, out_mask)\
+do {\
+    register __m256i _cmp_mask;\
+    _cmp_mask = _mm256_add_epi8(adjust, a1);\
+    _cmp_mask = _mm256_cmpgt_epi8(_cmp_mask, pivots);\
+    _move_mask.i = _mm256_movemask_epi8(_cmp_mask);\
+} while (0);
+#else
+#define DO_COMPARE(pivots, p2p, p3p, adjust, a1, a2, a3, out_mask)\
+do {\
+    register __m256i _gt1, _gt2, _gt3, _eq1, _eq2, _p2, _p3;\
+    _p2 = _mm256_castps_si256(_mm256_broadcast_ss(p2p));\
+    _p3 = _mm256_castps_si256(_mm256_broadcast_ss(p3p));\
+    _p2 = _mm256_add_epi8(adjust, _p2);\
+    _p3 = _mm256_add_epi8(adjust, _p3);\
+    _gt1 = _mm256_add_epi8(adjust, a1);\
+    _gt2 = _mm256_add_epi8(adjust, a2);\
+    _gt3 = _mm256_add_epi8(adjust, a3);\
+    _eq1 = _mm256_cmpeq_epi8(pivots, _gt1);\
+    _eq2 = _mm256_cmpeq_epi8(_p2, _gt2);\
+    _gt1 = _mm256_cmpgt_epi8(_gt1, pivots);\
+    _gt2 = _mm256_cmpgt_epi8(_gt2, _p2);\
+    _gt3 = _mm256_cmpgt_epi8(_gt3, _p3);\
+    _gt2 = _mm256_and_si256(_gt2, _eq1);\
+    _eq2 = _mm256_and_si256(_eq1, _eq2);\
+    _gt1 = _mm256_or_si256(_gt1, _gt2);\
+    _gt3 = _mm256_and_si256(_gt3, _eq2);\
+    _gt1 = _mm256_or_si256(_gt1, _gt3);\
+    out_mask = _mm256_movemask_epi8(_gt1);\
+} while (0);
+#endif
+
 /**
  * @brief Sorts 16-byte chunks of a vector based on the pivot and a1.
  *
@@ -152,19 +190,14 @@ __attribute__((aligned (32))) static const uint8_t rrl_shuffle_hi[16][32] = {
  * @param loc Returns the number of high values in the lower 16 bytes.
  * @param hic Returns the number of high values in the higher 16 bytes.
  */
-#define ARGMSORT2X16(pivots, adjust, a1, a2, a3, loc, hic)\
+#define ARGMSORT2X16(pivots, p2p, p3p, adjust, a1, a2, a3, loc, hic)\
 do {\
     register __m256i _sort_mask = _mm256_load_si256((__m256i*) shuffle_adjust);\
     union { int32_t i; uint8_t b[4]; uint16_t s[2]; } _move_mask;\
     unsigned int _lo_loc, _hi_loc;\
     \
     /* Reduce the high-value count and the offset into the 8-byte sort. */\
-    do {\
-        register __m256i _cmp_mask;\
-        _cmp_mask = _mm256_add_epi8(adjust, a1);\
-        _cmp_mask = _mm256_cmpgt_epi8(_cmp_mask, pivots);\
-        _move_mask.i = _mm256_movemask_epi8(_cmp_mask);\
-    } while (0);\
+    DO_COMPARE(pivots, p2p, p3p, adjust, a1, a2, a3, _move_mask.i);\
     \
     /* Determine how many high elements are in each section. */\
     loc = (unsigned int) __builtin_popcount(_move_mask.s[0]);\
@@ -211,11 +244,11 @@ do {\
  * @param a3 An array to apply the masks sort to.
  * @param count Returns the number of high elements in the vector.
  */
-#define ARGMSORT1X32(pivots, adjust, a1, a2, a3, count)\
+#define ARGMSORT1X32(pivots, p2p, p3p, adjust, a1, a2, a3, count)\
 do {\
     /* 16 sort the array after performing the comparison */\
     uint64_t _loc, _hic;\
-    ARGMSORT2X16(pivots, adjust, a1, a2, a3, _loc, _hic);\
+    ARGMSORT2X16(pivots, p2p, p3p, adjust, a1, a2, a3, _loc, _hic);\
     count = _loc + _hic;\
     \
     register __m256i _roll_mask, _a1_lo, _a2_lo, _a3_lo;\
@@ -332,6 +365,17 @@ do {\
 } while (0)
 
 /**
+ * @brief Converts a u8 to a float for broadcasting.
+ */
+static float
+commit_crime(
+    uint8_t b
+) {
+    union { float f; uint8_t c[4]; } crime = { .c = { b, b, b, b} };
+    return crime.f;
+}
+
+/**
  * @brief Performs a partition on the given arrays where the arrays are 32
  *        byte aligned and the size is a multiple of 32.
  * @param ch1 The first array to partition, and the one to be compared against
@@ -348,16 +392,25 @@ AlignPartition(
     __m256i *ch2,
     __m256i *ch3,
     size_t size,
+#if USE_EXACT_COMPARE
+    uint8_t pivot2,
+    uint8_t pivot3,
+#endif
     uint8_t pivot
 ) {
     assert(size > 0);
 
     // Set up the pivot vector.
-    union {
-        float f;
-        uint8_t p[4];
-    } crime = { .p = { pivot, pivot, pivot, pivot } };
-    register __m256i pivots = _mm256_castps_si256(_mm256_broadcast_ss(&crime.f));
+    float crime = commit_crime(pivot);
+#if USE_EXACT_COMPARE
+    float crime2 = commit_crime(pivot2);
+    float crime3 = commit_crime(pivot3);
+#else
+    float crime2, crime3;
+    (void)crime2;
+    (void)crime3;
+#endif
+    register __m256i pivots = _mm256_castps_si256(_mm256_broadcast_ss(&crime));
     register __m256i adjust = _mm256_load_si256((__m256i*) cmp_adjust);
     pivots = _mm256_add_epi8(pivots, adjust);
 
@@ -369,7 +422,7 @@ AlignPartition(
     a1 = _mm256_load_si256(&ch1[lo]);
     a2 = _mm256_load_si256(&ch2[lo]);
     a3 = _mm256_load_si256(&ch3[lo]);
-    ARGMSORT1X32(pivots, adjust, a1, a2, a3, ac);
+    ARGMSORT1X32(pivots, &crime2, &crime3, adjust, a1, a2, a3, ac);
 
     // Perform the partition for all except the last step.
     while (hi > lo) {
@@ -379,7 +432,7 @@ AlignPartition(
         b1 = _mm256_load_si256(&ch1[next]);
         b2 = _mm256_load_si256(&ch2[next]);
         b3 = _mm256_load_si256(&ch3[next]);
-        ARGMSORT1X32(pivots, adjust, b1, b2, b3, bc);
+        ARGMSORT1X32(pivots, &crime2, &crime3, adjust, b1, b2, b3, bc);
 
         // Sort across both chunks.
         ARGMSORT2X32(ac, a1, a2, a3, bc, b1, b2, b3);
@@ -421,10 +474,12 @@ Partition(
     uint8_t *ch3,
     size_t size,
     uint8_t pivot,
+#if USE_EXACT_COMPARE
+    uint8_t pivot2,
+    uint8_t pivot3,
+#endif
     mc_time_t *time
 ) {
-    // FIXME: There is probably a better way to deal with the unaligned bits.
-
     // Get the offsets necessary to align the size and arrays to a 32-byte
     // bound for the aligned partition function.
     size_t pre_align = 32 - (((uintptr_t) ch1) & 0x1F);
@@ -444,6 +499,10 @@ Partition(
             (__m256i*) &ch2[pre_align],
             (__m256i*) &ch3[pre_align],
             align_size,
+#if USE_EXACT_COMPARE
+            pivot2,
+            pivot3,
+#endif
             pivot
         );
         TIMESTAMP(ts2);
@@ -452,17 +511,33 @@ Partition(
 
         // Find the actual bound, now that we're mostly sorted.
         bound = (bound * 32) + pre_align;
+#if USE_EXACT_COMPARE
+        uint32_t pv = (uint32_t) ((pivot << 16) | (pivot2 << 8) | pivot3);
+        uint32_t t = (uint32_t) ((ch1[bound] << 16) | (ch2[bound] << 8) | ch3[bound]);
+        while ((bound < size) && (t <= pv)) {
+            bound++;
+            t = (uint32_t) ((ch1[bound] << 16) | (ch2[bound] << 8) | ch3[bound]);
+        }
+#else
         while ((bound < size) && (ch1[bound] <= pivot)) bound++;
+#endif
 
         // Sort the not-aligned pre parts.
         register __m256i u1, u2, u3, t1, t2, t3, p, adj;
         size_t target = (size_t) MAX(0, ((ptrdiff_t)bound) - 32);
         adj = _mm256_load_si256((__m256i*) cmp_adjust);
-        union {
-            float f;
-            uint8_t p[4];
-        } crime = { .p = { pivot, pivot, pivot, pivot } };
-        p = _mm256_castps_si256(_mm256_broadcast_ss(&crime.f));
+        float crime1 = commit_crime(pivot);
+
+#if USE_EXACT_COMPARE
+        float crime2 = commit_crime(pivot2);
+        float crime3 = commit_crime(pivot3);
+#else
+        float crime2, crime3;
+        (void)crime2;
+        (void)crime3;
+#endif
+
+        p = _mm256_castps_si256(_mm256_broadcast_ss(&crime1));
         p = _mm256_add_epi8(adj, p);
         u1 = _mm256_loadu_si256((__m256i*) &ch1[0]);
         u2 = _mm256_loadu_si256((__m256i*) &ch2[0]);
@@ -472,7 +547,7 @@ Partition(
         t3 = _mm256_loadu_si256((__m256i*) &ch3[target]);
 
         size_t count;
-        ARGMSORT1X32(p, adj, u1, u2, u3, count);
+        ARGMSORT1X32(p, &crime2, &crime3, adj, u1, u2, u3, count);
         bound = (size_t) MAX(32 - ((ptrdiff_t)count), (ptrdiff_t) (bound - count));
         do {
             register __m256i tmp = _mm256_load_si256((__m256i*) shuffle_reverse);
@@ -501,7 +576,7 @@ Partition(
         t2 = _mm256_loadu_si256((__m256i*) &ch2[target]);
         t3 = _mm256_loadu_si256((__m256i*) &ch3[target]);
 
-        ARGMSORT1X32(p, adj, u1, u2, u3, count);
+        ARGMSORT1X32(p, &crime2, &crime3, adj, u1, u2, u3, count);
         bound = MIN(size - count, bound + (32 - count));
         do {
             register __m256i tmp = _mm256_load_si256((__m256i*) shuffle_reverse);
@@ -521,6 +596,7 @@ Partition(
         _mm256_storeu_si256((__m256i*) &ch3[target], u3);
     } else {
         size_t lo = 0, hi = size;
+#if USE_EXACT_COMPARE == 0
         while (lo < hi) {
             if (ch1[lo] > pivot) {
                 hi--;
@@ -531,12 +607,27 @@ Partition(
                 lo++;
             }
         }
+#else
+        uint32_t p = (uint32_t) ((pivot << 16) | (pivot2 << 8) | pivot3);
+        while (lo < hi) {
+            uint32_t t = (uint32_t) ((ch1[lo] << 16) | (ch2[lo] << 8) | ch3[lo]);
+            if (t > p) {
+                hi--;
+                SWAP(ch1[lo], ch1[hi]);
+                SWAP(ch2[lo], ch2[hi]);
+                SWAP(ch3[lo], ch3[hi]);
+            } else {
+                lo++;
+            }
+        }
+#endif
 
         bound = hi;
     }
 
 #if 0
     // Verify that the array was partitioned correctly.
+#if USE_EXACT_COMPARE == 0
     for (size_t i = 0; i < size; i++) {
         if (!(((i < bound) && (ch1[i] <= pivot)) ||
                ((i >= bound) && (ch1[i] > pivot)))) {
@@ -546,6 +637,18 @@ Partition(
             abort();
         }
     }
+#else
+    uint32_t p = (uint32_t) ((pivot << 16) | (pivot2 << 8) | pivot3);
+    for (size_t i = 0; i < size; i++) {
+        uint32_t t = (uint32_t) ((ch1[i] << 16) | (ch2[i] << 8) | ch3[i]);
+        if (!(((i < bound) && (t <= p)) || ((i >= bound) && (t > p)))) {
+            fprintf(stderr, "Bad value %u at %zu for pivot = %u, size = %zu,"
+                    " bound = %zu, pre = %zu, post = %zu\n",
+                    t, i, p, size, bound, pre_align, post_align);
+            abort();
+        }
+    }
+#endif
 #endif
 
     return bound;
@@ -558,16 +661,22 @@ Partition(
  * @param ch3 The second channel to arg-partition with ch2.
  * @param size The size of the array.
  * @param k The k index to search for.
- * @return The kth element in a sorted version of buf.
+ * @param time The time measured for partition.
+ * @param m1 The median for channel 1.
+ * @param m2 The median for channel 2.
+ * @param m3 The median for channel 3.
  */
-static uint8_t
+static void
 QSelect(
     uint8_t *ch1,
     uint8_t *ch2,
     uint8_t *ch3,
     size_t size,
     size_t k,
-    mc_time_t *time
+    mc_time_t *time,
+    uint8_t *m1,
+    uint8_t *m2,
+    uint8_t *m3
 ) {
     assert(ch1);
     assert(ch2);
@@ -578,21 +687,45 @@ QSelect(
     // Bound the values of pivots we can choose to ensure termination, since
     // partition may not actually divide the array if, e.g., all the elements
     // are the same.
+#if USE_EXACT_COMPARE == 0
     uint8_t min_pivot = 0;
     uint8_t max_pivot = (uint8_t) ~0u;
+#else
+    uint32_t min_pivot = 0;
+    uint32_t max_pivot = (uint32_t) ~0u;
+#endif
 
     while ((size > 1) && (min_pivot <= max_pivot)) {
         unsigned long long ts1, ts2;
 
         // Get our pivot. Random is "good enough" for O(n) in most cases.
         size_t pivot_idx = ((size_t) (unsigned int) rand()) % size;
+#if USE_EXACT_COMPARE == 0
         uint8_t pivot = ch1[pivot_idx];
+#else
+        uint32_t pivot = (((uint32_t)ch1[pivot_idx]) << 16)
+                       | (((uint32_t)ch2[pivot_idx]) << 8)
+                       | ((uint32_t)ch3[pivot_idx]);
+#endif
+        assert(pivot >= min_pivot);
         pivot = MIN(pivot, max_pivot);
-        pivot = MAX(pivot, min_pivot);
 
         // Partition across our pivot.
         TIMESTAMP(ts1);
-        size_t mid = Partition(ch1, ch2, ch3, size, pivot, time);
+        size_t mid = Partition(
+            ch1,
+            ch2,
+            ch3,
+            size,
+#if USE_EXACT_COMPARE == 0
+            pivot,
+#else
+            (pivot >> 16) & 0xFF,
+            (pivot >> 8) & 0xFF,
+            pivot & 0xFF,
+#endif
+            time
+        );
         TIMESTAMP(ts2);
         assert(mid <= size);
 
@@ -613,7 +746,9 @@ QSelect(
         }
     }
 
-    return ch1[0];
+    *m1 = ch1[0];
+    *m2 = ch2[0];
+    *m3 = ch3[0];
 }
 
 size_t
@@ -628,11 +763,23 @@ MedianPartition(
 
     // Use the quickselect algorithm to find the median.
     size_t mid = size >> 1;
-    uint8_t median = QSelect(ch1, ch2, ch3, size, mid, time);
+    uint8_t m1, m2, m3;
+    QSelect(ch1, ch2, ch3, size, mid, time, &m1, &m2, &m3);
 
     // Partition across the median.
     TIMESTAMP(ts1);
-    size_t lo_size = Partition(ch1, ch2, ch3, size, median, time);
+    size_t lo_size = Partition(
+        ch1,
+        ch2,
+        ch3,
+        size,
+        m1,
+#if USE_EXACT_COMPARE
+        m2,
+        m3,
+#endif
+        time
+    );
     TIMESTAMP(ts2);
     assert(lo_size > mid);
 
@@ -641,14 +788,38 @@ MedianPartition(
 
     // Partition again across (median - 1) to force all median values to the
     // middle of the array.
-    if (median > 0) {
+#if USE_EXACT_COMPARE
+    uint32_t median = (uint32_t) ((m1 << 16) | (m2 << 8) | m3);
+#else
+    uint8_t median = m1;
+#endif
+    if (median-- > 0) {
+
         TIMESTAMP(ts1);
-        assert(Partition(ch1, ch2, ch3, lo_size, median - 1, time) <= mid);
+        size_t tmp = Partition(
+            ch1,
+            ch2,
+            ch3,
+            lo_size,
+#if USE_EXACT_COMPARE
+            (median >> 16) & 0xFF,
+            (median >> 8) & 0xFF,
+#endif
+            median & 0xFF,
+            time
+        );
+        assert(tmp <= mid);
         TIMESTAMP(ts2);
 
         time->part_units += lo_size;
         time->part_time += (ts2 - ts1);
     }
+
+    assert(ch1[mid] == m1);
+#if USE_EXACT_COMPARE
+    assert(ch2[mid] == m2);
+    assert(ch3[mid] == m3);
+#endif
 
     return mid;
 }
