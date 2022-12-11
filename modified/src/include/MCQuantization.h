@@ -35,6 +35,8 @@ typedef struct {
     unsigned long long dc_units;
     unsigned long long sub_time;
     unsigned long long sub_units;
+    unsigned long long full_time;
+    unsigned long long full_units;
 } mc_time_t;
 
 MCWorkspace *MCWorkspaceMake(mc_byte_t level, size_t img_size);

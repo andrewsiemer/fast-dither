@@ -154,16 +154,22 @@ __attribute__((aligned (32))) static const uint8_t rrl_shuffle_hi[16][32] = {
  * @param loc Returns the number of high values in the lower 16 bytes.
  * @param hic Returns the number of high values in the higher 16 bytes.
  */
-#define ARGMSORT2X16(sort8, popcounts, a1, a2, a3, loc, hic)\
+#define ARGMSORT2X16(mask, popcounts, a1, a2, a3, loc, hic)\
 do {\
     register __m256i _tmp8, _pre_roll, _tmp16_lo, _tmp16_hi, _sort_mask;\
+    align(32) uint64_t _sort8[4];\
     \
     loc = popcounts.lcnt;\
     hic = popcounts.hcnt;\
     \
+    _sort8[0] = * (uint64_t*) sort1b_4x8[(mask >> 0) & 0xFF];\
+    _sort8[1] = * (uint64_t*) sort1b_4x8[(mask >> 8) & 0xFF];\
+    _sort8[2] = * (uint64_t*) sort1b_4x8[(mask >> 16) & 0xFF];\
+    _sort8[3] = * (uint64_t*) sort1b_4x8[(mask >> 24) & 0xFF];\
+    \
     /* Load in the 64-bit vectors that will sort each 64-bit subvector. */\
     _sort_mask = _mm256_load_si256((__m256i*) shuffle_adjust);\
-    _tmp8 = _mm256_load_si256(sort8);\
+    _tmp8 = _mm256_load_si256((__m256i*) _sort8);\
     _pre_roll = _mm256_load_si256((__m256i*) rrl_shuffle_hi[loc & 0xF]);\
     \
     /* Do the same for the 128-bit sorting vectors */\
@@ -191,11 +197,11 @@ do {\
  * @param a3 An array to apply the masks sort to.
  * @param count Returns the number of high elements in the vector.
  */
-#define ARGMSORT1X32(sort8, popcounts, a1, a2, a3, count)\
+#define ARGMSORT1X32(mask, popcounts, a1, a2, a3, count)\
 do {\
     /* 16 sort the array after performing the comparison */\
     uint64_t _loc, _hic;\
-    ARGMSORT2X16(sort8, popcounts, a1, a2, a3, _loc, _hic);\
+    ARGMSORT2X16(mask, popcounts, a1, a2, a3, _loc, _hic);\
     count = _loc + _hic;\
     \
     register __m256i _roll_mask, _a1_lo, _a2_lo, _a3_lo;\
@@ -316,24 +322,18 @@ do {\
  */
 #define ARGPSORT1X32(pivots, adjust, a1, a2, a3, count)\
 do {\
-    __attribute__((aligned(32))) uint64_t sort8[4];\
     popcount_t counts;\
     register __m256i _a1 = a1;\
     _a1 = _mm256_add_epi8(_a1, adjust);\
     _a1 = _mm256_cmpgt_epi8(_a1, pivots);\
     int32_t _m1 = _mm256_movemask_epi8(_a1);\
     \
-    sort8[0] = * (uint64_t*) sort1b_4x8[(_m1 >> 0) & 0xFF];\
-    sort8[1] = * (uint64_t*) sort1b_4x8[(_m1 >> 8) & 0xFF];\
-    sort8[2] = * (uint64_t*) sort1b_4x8[(_m1 >> 16) & 0xFF];\
-    sort8[3] = * (uint64_t*) sort1b_4x8[(_m1 >> 24) & 0xFF];\
-    \
     counts.llcnt = (uint8_t) (unsigned int) __builtin_popcount( _m1 & 0xFF);\
     counts.hlcnt = (uint8_t) (unsigned int) __builtin_popcount((_m1 >> 16) & 0xFF);\
     counts.lcnt  = (uint8_t) (unsigned int) __builtin_popcount( _m1 & 0xFFFF);\
     counts.hcnt  = (uint8_t) (unsigned int) __builtin_popcount((_m1 >> 16) & 0xFFFF);\
     \
-    ARGMSORT1X32(((__m256i*) sort8), counts, a1, a2, a3, count);\
+    ARGMSORT1X32(_m1, counts, a1, a2, a3, count);\
 } while (0)
 
 /**
@@ -347,18 +347,21 @@ commit_crime(
     return crime.f;
 }
 
+/**
+ * @brief Does the comparison.
+ * @param ws The MedianPartition workspace for this partition.
+ * @param ch1 The channel to compare with.
+ * @param size The size of the channel.
+ * @param pivot The pivot to compare the channel against.
+ */
 static void
 DoCompare(
     mp_workspace_t *ws,
     __m256i *ch1,
     size_t size,
-    uint8_t pivot,
-    mc_time_t *time
+    uint8_t pivot
 ) {
     assert(size > 0);
-    unsigned long long ts1, ts2;
-
-    TIMESTAMP(ts1);
 
     // Set up the pivot vector.
     float crime = commit_crime(pivot);
@@ -384,6 +387,7 @@ DoCompare(
         register __m256i a1, a2, a3, a4, a5, a6, a7;
         register __m256i a8, a9, a10, a11, a12, a13, a14;
         register uint32_t m1, m2, m3, m4, m5, m6, m7;
+        register popcount_t c1, c2, c3, c4, c5, c6, c7;
 
         a1 = _mm256_load_si256(&ch1[(size % 7) + 0]);
         a2 = _mm256_load_si256(&ch1[(size % 7) + 1]);
@@ -450,34 +454,34 @@ DoCompare(
             m6 = (unsigned int) _mm256_movemask_epi8(a13);
             m7 = (unsigned int) _mm256_movemask_epi8(a14);
 
-            ws->counts[i - 7].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m1 & 0xFF);
-            ws->counts[i - 7].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m1 >> 16) & 0xFF);
-            ws->counts[i - 7].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m1 & 0xFFFF);
-            ws->counts[i - 7].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m1 >> 16) & 0xFFFF);
-            ws->counts[i - 6].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m2 & 0xFF);
-            ws->counts[i - 6].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m2 >> 16) & 0xFF);
-            ws->counts[i - 6].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m2 & 0xFFFF);
-            ws->counts[i - 6].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m2 >> 16) & 0xFFFF);
-            ws->counts[i - 5].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m3 & 0xFF);
-            ws->counts[i - 5].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m3 >> 16) & 0xFF);
-            ws->counts[i - 5].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m3 & 0xFFFF);
-            ws->counts[i - 5].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m3 >> 16) & 0xFFFF);
-            ws->counts[i - 4].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m4 & 0xFF);
-            ws->counts[i - 4].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m4 >> 16) & 0xFF);
-            ws->counts[i - 4].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m4 & 0xFFFF);
-            ws->counts[i - 4].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m4 >> 16) & 0xFFFF);
-            ws->counts[i - 3].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m5 & 0xFF);
-            ws->counts[i - 3].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m5 >> 16) & 0xFF);
-            ws->counts[i - 3].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m5 & 0xFFFF);
-            ws->counts[i - 3].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m5 >> 16) & 0xFFFF);
-            ws->counts[i - 2].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m6 & 0xFF);
-            ws->counts[i - 2].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m6 >> 16) & 0xFF);
-            ws->counts[i - 2].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m6 & 0xFFFF);
-            ws->counts[i - 2].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m6 >> 16) & 0xFFFF);
-            ws->counts[i - 1].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m7 & 0xFF);
-            ws->counts[i - 1].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m7 >> 16) & 0xFF);
-            ws->counts[i - 1].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m7 & 0xFFFF);
-            ws->counts[i - 1].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m7 >> 16) & 0xFFFF);
+            c1.llcnt = (uint8_t) (unsigned int) __builtin_popcount( m1 & 0xFF);
+            c1.hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m1 >> 16) & 0xFF);
+            c1.lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m1 & 0xFFFF);
+            c1.hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m1 >> 16) & 0xFFFF);
+            c2.llcnt = (uint8_t) (unsigned int) __builtin_popcount( m2 & 0xFF);
+            c2.hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m2 >> 16) & 0xFF);
+            c2.lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m2 & 0xFFFF);
+            c2.hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m2 >> 16) & 0xFFFF);
+            c3.llcnt = (uint8_t) (unsigned int) __builtin_popcount( m3 & 0xFF);
+            c3.hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m3 >> 16) & 0xFF);
+            c3.lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m3 & 0xFFFF);
+            c3.hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m3 >> 16) & 0xFFFF);
+            c4.llcnt = (uint8_t) (unsigned int) __builtin_popcount( m4 & 0xFF);
+            c4.hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m4 >> 16) & 0xFF);
+            c4.lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m4 & 0xFFFF);
+            c4.hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m4 >> 16) & 0xFFFF);
+            c5.llcnt = (uint8_t) (unsigned int) __builtin_popcount( m5 & 0xFF);
+            c5.hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m5 >> 16) & 0xFF);
+            c5.lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m5 & 0xFFFF);
+            c5.hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m5 >> 16) & 0xFFFF);
+            c6.llcnt = (uint8_t) (unsigned int) __builtin_popcount( m6 & 0xFF);
+            c6.hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m6 >> 16) & 0xFF);
+            c6.lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m6 & 0xFFFF);
+            c6.hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m6 >> 16) & 0xFFFF);
+            c7.llcnt = (uint8_t) (unsigned int) __builtin_popcount( m7 & 0xFF);
+            c7.hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m7 >> 16) & 0xFF);
+            c7.lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m7 & 0xFFFF);
+            c7.hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m7 >> 16) & 0xFFFF);
 
             ws->mask[i - 7] = m1;
             ws->mask[i - 6] = m2;
@@ -486,6 +490,14 @@ DoCompare(
             ws->mask[i - 3] = m5;
             ws->mask[i - 2] = m6;
             ws->mask[i - 1] = m7;
+
+            ws->counts[i - 7] = c1;
+            ws->counts[i - 6] = c2;
+            ws->counts[i - 5] = c3;
+            ws->counts[i - 4] = c4;
+            ws->counts[i - 3] = c5;
+            ws->counts[i - 2] = c6;
+            ws->counts[i - 1] = c7;
 
             a8 = a1;
             a9 = a2;
@@ -504,34 +516,34 @@ DoCompare(
         m6 = (unsigned int) _mm256_movemask_epi8(a13);
         m7 = (unsigned int) _mm256_movemask_epi8(a14);
 
-        ws->counts[size - 7].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m1 & 0xFF);
-        ws->counts[size - 7].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m1 >> 16) & 0xFF);
-        ws->counts[size - 7].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m1 & 0xFFFF);
-        ws->counts[size - 7].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m1 >> 16) & 0xFFFF);
-        ws->counts[size - 6].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m2 & 0xFF);
-        ws->counts[size - 6].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m2 >> 16) & 0xFF);
-        ws->counts[size - 6].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m2 & 0xFFFF);
-        ws->counts[size - 6].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m2 >> 16) & 0xFFFF);
-        ws->counts[size - 5].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m3 & 0xFF);
-        ws->counts[size - 5].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m3 >> 16) & 0xFF);
-        ws->counts[size - 5].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m3 & 0xFFFF);
-        ws->counts[size - 5].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m3 >> 16) & 0xFFFF);
-        ws->counts[size - 4].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m4 & 0xFF);
-        ws->counts[size - 4].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m4 >> 16) & 0xFF);
-        ws->counts[size - 4].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m4 & 0xFFFF);
-        ws->counts[size - 4].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m4 >> 16) & 0xFFFF);
-        ws->counts[size - 3].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m5 & 0xFF);
-        ws->counts[size - 3].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m5 >> 16) & 0xFF);
-        ws->counts[size - 3].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m5 & 0xFFFF);
-        ws->counts[size - 3].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m5 >> 16) & 0xFFFF);
-        ws->counts[size - 2].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m6 & 0xFF);
-        ws->counts[size - 2].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m6 >> 16) & 0xFF);
-        ws->counts[size - 2].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m6 & 0xFFFF);
-        ws->counts[size - 2].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m6 >> 16) & 0xFFFF);
-        ws->counts[size - 1].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m7 & 0xFF);
-        ws->counts[size - 1].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m7 >> 16) & 0xFF);
-        ws->counts[size - 1].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m7 & 0xFFFF);
-        ws->counts[size - 1].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m7 >> 16) & 0xFFFF);
+        c1.llcnt = (uint8_t) (unsigned int) __builtin_popcount( m1 & 0xFF);
+        c1.hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m1 >> 16) & 0xFF);
+        c1.lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m1 & 0xFFFF);
+        c1.hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m1 >> 16) & 0xFFFF);
+        c2.llcnt = (uint8_t) (unsigned int) __builtin_popcount( m2 & 0xFF);
+        c2.hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m2 >> 16) & 0xFF);
+        c2.lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m2 & 0xFFFF);
+        c2.hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m2 >> 16) & 0xFFFF);
+        c3.llcnt = (uint8_t) (unsigned int) __builtin_popcount( m3 & 0xFF);
+        c3.hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m3 >> 16) & 0xFF);
+        c3.lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m3 & 0xFFFF);
+        c3.hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m3 >> 16) & 0xFFFF);
+        c4.llcnt = (uint8_t) (unsigned int) __builtin_popcount( m4 & 0xFF);
+        c4.hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m4 >> 16) & 0xFF);
+        c4.lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m4 & 0xFFFF);
+        c4.hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m4 >> 16) & 0xFFFF);
+        c5.llcnt = (uint8_t) (unsigned int) __builtin_popcount( m5 & 0xFF);
+        c5.hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m5 >> 16) & 0xFF);
+        c5.lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m5 & 0xFFFF);
+        c5.hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m5 >> 16) & 0xFFFF);
+        c6.llcnt = (uint8_t) (unsigned int) __builtin_popcount( m6 & 0xFF);
+        c6.hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m6 >> 16) & 0xFF);
+        c6.lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m6 & 0xFFFF);
+        c6.hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m6 >> 16) & 0xFFFF);
+        c7.llcnt = (uint8_t) (unsigned int) __builtin_popcount( m7 & 0xFF);
+        c7.hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m7 >> 16) & 0xFF);
+        c7.lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m7 & 0xFFFF);
+        c7.hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m7 >> 16) & 0xFFFF);
 
         ws->mask[size - 7] = m1;
         ws->mask[size - 6] = m2;
@@ -540,25 +552,34 @@ DoCompare(
         ws->mask[size - 3] = m5;
         ws->mask[size - 2] = m6;
         ws->mask[size - 1] = m7;
-    }
 
-    TIMESTAMP(ts2);
-    time->dc_time += (ts2 - ts1);
-    time->dc_units += size * 32;
+        ws->counts[size - 7] = c1;
+        ws->counts[size - 6] = c2;
+        ws->counts[size - 5] = c3;
+        ws->counts[size - 4] = c4;
+        ws->counts[size - 3] = c5;
+        ws->counts[size - 2] = c6;
+        ws->counts[size - 1] = c7;
+    }
 }
 
+/**
+ * @brief Sub-partitions the given arrays.
+ * @param ws The MedianPartition workspace for this partition.
+ * @param ch1 The first channel to partition across.
+ * @param ch2 The second channel to partition across.
+ * @param ch3 The third channel to partition across.
+ * @param size The size of each channel.
+ */
 static void
 AlignSubPartition32(
     mp_workspace_t *ws,
     __m256i *ch1,
     __m256i *ch2,
     __m256i *ch3,
-    size_t size,
-    mc_time_t *time
+    size_t size
 ) {
     register __m256i a1, a2, a3, b1, b2, b3;
-    unsigned long long ts1, ts2;
-    TIMESTAMP(ts1);
 
     for (size_t i = 0; i < (size % 2); i++) {
         align(32) uint64_t sort8[4];
@@ -754,42 +775,24 @@ AlignSubPartition32(
             _mm256_store_si256(&ch3[i + 1], b3);
         }
     }
-
-    TIMESTAMP(ts2);
-
-    time->sub_time += (ts2 - ts1);
-    time->sub_units += size * 32;
 }
 
 /**
- * @brief Performs a partition on the given arrays where the arrays are 32
- *        byte aligned and the size is a multiple of 32.
- * @param ch1 The first array to partition, and the one to be compared against
- *            the pivot.
- * @param ch2 The second array to partition, moved the same as ch1.
- * @param ch3 The third array to be partitioned, moved the same as ch1.
- * @param size The size of each channel, in 32-byte chunks.
- * @param pivot The value to pivot across.
- * @return The index of the vector containing the pivot crossing.
+ * @brief Fully partitions the given sub-partitioned arrays.
+ * @param ws The MedianPartition workspace for this partition.
+ * @param ch1 The first channel to partition across.
+ * @param ch2 The second channel to partition across.
+ * @param ch3 The third channel to partition across.
+ * @param size The size of each channel.
  */
 static size_t
-AlignPartition(
+AlignFullPartition(
     mp_workspace_t *ws,
     __m256i *ch1,
     __m256i *ch2,
     __m256i *ch3,
-    size_t size,
-    uint8_t pivot,
-    mc_time_t *time
+    size_t size
 ) {
-    assert(size > 0);
-
-    // Prepare our workspace for the partition.
-    DoCompare(ws, ch1, size, pivot, time);
-
-    // Partition each 32-element sub-group.
-    AlignSubPartition32(ws, ch1, ch2, ch3, size, time);
-
     // Load and sort the first chunk. This is done here to avoid repeat work.
     size_t lo = 0, hi = size - 1;
     size_t next = hi;
@@ -841,6 +844,54 @@ AlignPartition(
 
     // Return the index.
     return lo;
+}
+
+/**
+ * @brief Performs a partition on the given arrays where the arrays are 32
+ *        byte aligned and the size is a multiple of 32.
+ * @param ch1 The first array to partition, and the one to be compared against
+ *            the pivot.
+ * @param ch2 The second array to partition, moved the same as ch1.
+ * @param ch3 The third array to be partitioned, moved the same as ch1.
+ * @param size The size of each channel, in 32-byte chunks.
+ * @param pivot The value to pivot across.
+ * @return The index of the vector containing the pivot crossing.
+ */
+static size_t
+AlignPartition(
+    mp_workspace_t *ws,
+    __m256i *ch1,
+    __m256i *ch2,
+    __m256i *ch3,
+    size_t size,
+    uint8_t pivot,
+    mc_time_t *time
+) {
+    assert(size > 0);
+    unsigned long long ts1, ts2;
+
+    // Prepare our workspace for the partition.
+    TIMESTAMP(ts1);
+    DoCompare(ws, ch1, size, pivot);
+    TIMESTAMP(ts2);
+    time->dc_time += (ts2 - ts1);
+    time->dc_units += size * 32;
+
+    // Partition each 32-element sub-group.
+    TIMESTAMP(ts1);
+    AlignSubPartition32(ws, ch1, ch2, ch3, size);
+    TIMESTAMP(ts2);
+    time->sub_time += (ts2 - ts1);
+    time->sub_units += size * 32;
+
+    // Partition the full array.
+    TIMESTAMP(ts1);
+    size_t ret = AlignFullPartition(ws, ch1, ch2, ch3, size);
+    TIMESTAMP(ts2);
+    time->full_time += (ts2 - ts1);
+    time->full_units += size * 32;
+
+    return ret;
 }
 
 static size_t
