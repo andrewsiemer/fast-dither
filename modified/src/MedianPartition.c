@@ -372,14 +372,18 @@ DoCompare(
         register __m256i a1 = _mm256_load_si256(&ch1[i]);
         a1 = _mm256_add_epi8(a1, adjust);
         a1 = _mm256_cmpgt_epi8(a1, pivots);
-        register uint32_t m1 = (unsigned int) _mm256_movemask_epi8(a1);
-        ws->mask[i] = m1;
+        register uint32_t m = (unsigned int) _mm256_movemask_epi8(a1);
+        ws->counts[i].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m & 0xFF);
+        ws->counts[i].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m >> 16) & 0xFF);
+        ws->counts[i].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m & 0xFFFF);
+        ws->counts[i].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m >> 16) & 0xFFFF);
+        ws->mask[i] = m;
     }
 
     if ((size % 7) < size) {
         register __m256i a1, a2, a3, a4, a5, a6, a7;
         register __m256i a8, a9, a10, a11, a12, a13, a14;
-        register uint32_t m8, m9, m10, m11, m12, m13, m14;
+        register uint32_t m1, m2, m3, m4, m5, m6, m7;
 
         a1 = _mm256_load_si256(&ch1[(size % 7) + 0]);
         a2 = _mm256_load_si256(&ch1[(size % 7) + 1]);
@@ -438,21 +442,50 @@ DoCompare(
             a6 = _mm256_cmpgt_epi8(a6, pivots);
             a7 = _mm256_cmpgt_epi8(a7, pivots);
 
-            m8 = (unsigned int) _mm256_movemask_epi8(a8);
-            m9 = (unsigned int) _mm256_movemask_epi8(a9);
-            m10 = (unsigned int) _mm256_movemask_epi8(a10);
-            m11 = (unsigned int) _mm256_movemask_epi8(a11);
-            m12 = (unsigned int) _mm256_movemask_epi8(a12);
-            m13 = (unsigned int) _mm256_movemask_epi8(a13);
-            m14 = (unsigned int) _mm256_movemask_epi8(a14);
+            m1 = (unsigned int) _mm256_movemask_epi8(a8);
+            m2 = (unsigned int) _mm256_movemask_epi8(a9);
+            m3 = (unsigned int) _mm256_movemask_epi8(a10);
+            m4 = (unsigned int) _mm256_movemask_epi8(a11);
+            m5 = (unsigned int) _mm256_movemask_epi8(a12);
+            m6 = (unsigned int) _mm256_movemask_epi8(a13);
+            m7 = (unsigned int) _mm256_movemask_epi8(a14);
 
-            ws->mask[i - 7] = m8;
-            ws->mask[i - 6] = m9;
-            ws->mask[i - 5] = m10;
-            ws->mask[i - 4] = m11;
-            ws->mask[i - 3] = m12;
-            ws->mask[i - 2] = m13;
-            ws->mask[i - 1] = m14;
+            ws->counts[i - 7].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m1 & 0xFF);
+            ws->counts[i - 7].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m1 >> 16) & 0xFF);
+            ws->counts[i - 7].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m1 & 0xFFFF);
+            ws->counts[i - 7].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m1 >> 16) & 0xFFFF);
+            ws->counts[i - 6].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m2 & 0xFF);
+            ws->counts[i - 6].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m2 >> 16) & 0xFF);
+            ws->counts[i - 6].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m2 & 0xFFFF);
+            ws->counts[i - 6].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m2 >> 16) & 0xFFFF);
+            ws->counts[i - 5].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m3 & 0xFF);
+            ws->counts[i - 5].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m3 >> 16) & 0xFF);
+            ws->counts[i - 5].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m3 & 0xFFFF);
+            ws->counts[i - 5].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m3 >> 16) & 0xFFFF);
+            ws->counts[i - 4].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m4 & 0xFF);
+            ws->counts[i - 4].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m4 >> 16) & 0xFF);
+            ws->counts[i - 4].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m4 & 0xFFFF);
+            ws->counts[i - 4].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m4 >> 16) & 0xFFFF);
+            ws->counts[i - 3].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m5 & 0xFF);
+            ws->counts[i - 3].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m5 >> 16) & 0xFF);
+            ws->counts[i - 3].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m5 & 0xFFFF);
+            ws->counts[i - 3].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m5 >> 16) & 0xFFFF);
+            ws->counts[i - 2].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m6 & 0xFF);
+            ws->counts[i - 2].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m6 >> 16) & 0xFF);
+            ws->counts[i - 2].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m6 & 0xFFFF);
+            ws->counts[i - 2].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m6 >> 16) & 0xFFFF);
+            ws->counts[i - 1].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m7 & 0xFF);
+            ws->counts[i - 1].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m7 >> 16) & 0xFF);
+            ws->counts[i - 1].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m7 & 0xFFFF);
+            ws->counts[i - 1].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m7 >> 16) & 0xFFFF);
+
+            ws->mask[i - 7] = m1;
+            ws->mask[i - 6] = m2;
+            ws->mask[i - 5] = m3;
+            ws->mask[i - 4] = m4;
+            ws->mask[i - 3] = m5;
+            ws->mask[i - 2] = m6;
+            ws->mask[i - 1] = m7;
 
             a8 = a1;
             a9 = a2;
@@ -463,77 +496,50 @@ DoCompare(
             a14 = a7;
         }
 
-        m8 = (unsigned int) _mm256_movemask_epi8(a8);
-        m9 = (unsigned int) _mm256_movemask_epi8(a9);
-        m10 = (unsigned int) _mm256_movemask_epi8(a10);
-        m11 = (unsigned int) _mm256_movemask_epi8(a11);
-        m12 = (unsigned int) _mm256_movemask_epi8(a12);
-        m13 = (unsigned int) _mm256_movemask_epi8(a13);
-        m14 = (unsigned int) _mm256_movemask_epi8(a14);
+        m1 = (unsigned int) _mm256_movemask_epi8(a8);
+        m2 = (unsigned int) _mm256_movemask_epi8(a9);
+        m3 = (unsigned int) _mm256_movemask_epi8(a10);
+        m4 = (unsigned int) _mm256_movemask_epi8(a11);
+        m5 = (unsigned int) _mm256_movemask_epi8(a12);
+        m6 = (unsigned int) _mm256_movemask_epi8(a13);
+        m7 = (unsigned int) _mm256_movemask_epi8(a14);
 
-        ws->mask[size - 7] = m8;
-        ws->mask[size - 6] = m9;
-        ws->mask[size - 5] = m10;
-        ws->mask[size - 4] = m11;
-        ws->mask[size - 3] = m12;
-        ws->mask[size - 2] = m13;
-        ws->mask[size - 1] = m14;
-    }
+        ws->counts[size - 7].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m1 & 0xFF);
+        ws->counts[size - 7].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m1 >> 16) & 0xFF);
+        ws->counts[size - 7].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m1 & 0xFFFF);
+        ws->counts[size - 7].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m1 >> 16) & 0xFFFF);
+        ws->counts[size - 6].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m2 & 0xFF);
+        ws->counts[size - 6].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m2 >> 16) & 0xFF);
+        ws->counts[size - 6].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m2 & 0xFFFF);
+        ws->counts[size - 6].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m2 >> 16) & 0xFFFF);
+        ws->counts[size - 5].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m3 & 0xFF);
+        ws->counts[size - 5].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m3 >> 16) & 0xFF);
+        ws->counts[size - 5].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m3 & 0xFFFF);
+        ws->counts[size - 5].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m3 >> 16) & 0xFFFF);
+        ws->counts[size - 4].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m4 & 0xFF);
+        ws->counts[size - 4].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m4 >> 16) & 0xFF);
+        ws->counts[size - 4].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m4 & 0xFFFF);
+        ws->counts[size - 4].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m4 >> 16) & 0xFFFF);
+        ws->counts[size - 3].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m5 & 0xFF);
+        ws->counts[size - 3].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m5 >> 16) & 0xFF);
+        ws->counts[size - 3].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m5 & 0xFFFF);
+        ws->counts[size - 3].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m5 >> 16) & 0xFFFF);
+        ws->counts[size - 2].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m6 & 0xFF);
+        ws->counts[size - 2].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m6 >> 16) & 0xFF);
+        ws->counts[size - 2].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m6 & 0xFFFF);
+        ws->counts[size - 2].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m6 >> 16) & 0xFFFF);
+        ws->counts[size - 1].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m7 & 0xFF);
+        ws->counts[size - 1].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m7 >> 16) & 0xFF);
+        ws->counts[size - 1].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m7 & 0xFFFF);
+        ws->counts[size - 1].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m7 >> 16) & 0xFFFF);
 
-    /* Calculate popcounts */
-
-    for (size_t i = 0; i < (size % 8); i++) {
-        register uint32_t m = ws->mask[i];
-        ws->counts[i].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m & 0xFF);
-        ws->counts[i].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m >> 16) & 0xFF);
-        ws->counts[i].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m & 0xFFFF);
-        ws->counts[i].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m >> 16) & 0xFFFF);
-    }
-
-    for (size_t i = size % 8; i < size; i += 8) {
-        register uint32_t m1, m2, m3, m4, m5, m6, m7, m8;
-
-        m1 = ws->mask[i + 0];
-        m2 = ws->mask[i + 1];
-        m3 = ws->mask[i + 2];
-        m4 = ws->mask[i + 3];
-        m5 = ws->mask[i + 4];
-        m6 = ws->mask[i + 5];
-        m7 = ws->mask[i + 6];
-        m8 = ws->mask[i + 7];
-
-        ws->counts[i + 0].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m1 & 0xFF);
-        ws->counts[i + 0].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m1 >> 16) & 0xFF);
-        ws->counts[i + 0].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m1 & 0xFFFF);
-        ws->counts[i + 0].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m1 >> 16) & 0xFFFF);
-        ws->counts[i + 1].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m2 & 0xFF);
-        ws->counts[i + 1].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m2 >> 16) & 0xFF);
-        ws->counts[i + 1].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m2 & 0xFFFF);
-        ws->counts[i + 1].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m2 >> 16) & 0xFFFF);
-        ws->counts[i + 2].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m3 & 0xFF);
-        ws->counts[i + 2].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m3 >> 16) & 0xFF);
-        ws->counts[i + 2].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m3 & 0xFFFF);
-        ws->counts[i + 2].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m3 >> 16) & 0xFFFF);
-        ws->counts[i + 3].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m4 & 0xFF);
-        ws->counts[i + 3].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m4 >> 16) & 0xFF);
-        ws->counts[i + 3].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m4 & 0xFFFF);
-        ws->counts[i + 3].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m4 >> 16) & 0xFFFF);
-        ws->counts[i + 4].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m5 & 0xFF);
-        ws->counts[i + 4].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m5 >> 16) & 0xFF);
-        ws->counts[i + 4].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m5 & 0xFFFF);
-        ws->counts[i + 4].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m5 >> 16) & 0xFFFF);
-        ws->counts[i + 5].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m6 & 0xFF);
-        ws->counts[i + 5].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m6 >> 16) & 0xFF);
-        ws->counts[i + 5].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m6 & 0xFFFF);
-        ws->counts[i + 5].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m6 >> 16) & 0xFFFF);
-        ws->counts[i + 6].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m7 & 0xFF);
-        ws->counts[i + 6].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m7 >> 16) & 0xFF);
-        ws->counts[i + 6].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m7 & 0xFFFF);
-        ws->counts[i + 6].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m7 >> 16) & 0xFFFF);
-        ws->counts[i + 7].llcnt = (uint8_t) (unsigned int) __builtin_popcount( m8 & 0xFF);
-        ws->counts[i + 7].hlcnt = (uint8_t) (unsigned int) __builtin_popcount((m8 >> 16) & 0xFF);
-        ws->counts[i + 7].lcnt  = (uint8_t) (unsigned int) __builtin_popcount( m8 & 0xFFFF);
-        ws->counts[i + 7].hcnt  = (uint8_t) (unsigned int) __builtin_popcount((m8 >> 16) & 0xFFFF);
+        ws->mask[size - 7] = m1;
+        ws->mask[size - 6] = m2;
+        ws->mask[size - 5] = m3;
+        ws->mask[size - 4] = m4;
+        ws->mask[size - 3] = m5;
+        ws->mask[size - 2] = m6;
+        ws->mask[size - 1] = m7;
     }
 
     TIMESTAMP(ts2);
