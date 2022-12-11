@@ -31,9 +31,13 @@ typedef struct {
     unsigned long long mc_units;
     unsigned long long align_time;
     unsigned long long align_units;
+    unsigned long long dc_time;
+    unsigned long long dc_units;
+    unsigned long long sub_time;
+    unsigned long long sub_units;
 } mc_time_t;
 
-MCWorkspace *MCWorkspaceMake(mc_byte_t level);
+MCWorkspace *MCWorkspaceMake(mc_byte_t level, size_t img_size);
 void MCWorkspaceDestroy(MCWorkspace *ws);
 DTPalette *MCQuantizeData(SplitImage *img, MCWorkspace *ws, mc_time_t *time);
 

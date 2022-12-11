@@ -48,10 +48,11 @@ struct mc_workspace_t {
     mc_byte_t level;
     MCCube *cubes;
     DTPalette *palette;
+    mp_workspace_t mp;
 };
 
 MCWorkspace *
-MCWorkspaceMake(mc_byte_t level)
+MCWorkspaceMake(mc_byte_t level, size_t img_size)
 {
     MCWorkspace *ws = XMalloc(sizeof(MCWorkspace));
     ws->level = level;
@@ -59,6 +60,7 @@ MCWorkspaceMake(mc_byte_t level)
     ws->palette->size = 1 << level;
     ws->palette->colors = XMalloc(sizeof(DTPixel) * ws->palette->size);
     ws->cubes = XMalloc(sizeof(MCCube) * ws->palette->size);
+    MPWorkspaceInit(&ws->mp, img_size);
     return ws;
 }
 
@@ -67,6 +69,7 @@ MCWorkspaceDestroy(MCWorkspace *ws)
 {
     free(ws->cubes);
     free(ws->palette);
+    MPWorkspaceDestroy(&ws->mp);
     free(ws);
 }
 
@@ -297,6 +300,7 @@ static void
 MCSplit(
     MCCube *lo,
     MCCube *hi,
+    mp_workspace_t *ws,
     mc_time_t *time
 ) {
     assert(lo);
@@ -311,32 +315,32 @@ MCSplit(
     switch (dim) {
         case DIM_RGB:
             TIMESTAMP(ts1);
-            mid = MedianPartition(lo->r, lo->g, lo->b, lo->size, time);
+            mid = MedianPartition(ws, lo->r, lo->g, lo->b, lo->size, time);
             TIMESTAMP(ts2);
             break;
         case DIM_RBG:
             TIMESTAMP(ts1);
-            mid = MedianPartition(lo->r, lo->b, lo->g, lo->size, time);
+            mid = MedianPartition(ws, lo->r, lo->b, lo->g, lo->size, time);
             TIMESTAMP(ts2);
             break;
         case DIM_GRB:
             TIMESTAMP(ts1);
-            mid = MedianPartition(lo->g, lo->r, lo->b, lo->size, time);
+            mid = MedianPartition(ws, lo->g, lo->r, lo->b, lo->size, time);
             TIMESTAMP(ts2);
             break;
         case DIM_GBR:
             TIMESTAMP(ts1);
-            mid = MedianPartition(lo->g, lo->b, lo->r, lo->size, time);
+            mid = MedianPartition(ws, lo->g, lo->b, lo->r, lo->size, time);
             TIMESTAMP(ts2);
             break;
         case DIM_BRG:
             TIMESTAMP(ts1);
-            mid = MedianPartition(lo->b, lo->r, lo->g, lo->size, time);
+            mid = MedianPartition(ws, lo->b, lo->r, lo->g, lo->size, time);
             TIMESTAMP(ts2);
             break;
         case DIM_BGR:
             TIMESTAMP(ts1);
-            mid = MedianPartition(lo->b, lo->g, lo->r, lo->size, time);
+            mid = MedianPartition(ws, lo->b, lo->g, lo->r, lo->size, time);
             TIMESTAMP(ts2);
             break;
         default:
@@ -371,16 +375,17 @@ MCQuantizeNext(
     MCCube *cubes,
     size_t size,
     mc_byte_t level,
+    mp_workspace_t *ws,
     mc_time_t *time
 ) {
     if (level == 0) { return; }
 
     size_t offset = size >> 1;
-    MCSplit(&cubes[0], &cubes[offset], time);
+    MCSplit(&cubes[0], &cubes[offset], ws, time);
     MCShrinkCube(&cubes[0], time);
     MCShrinkCube(&cubes[offset], time);
-    MCQuantizeNext(&cubes[0], offset, level - 1, time);
-    MCQuantizeNext(&cubes[offset], size - offset, level - 1, time);
+    MCQuantizeNext(&cubes[0], offset, level - 1, ws, time);
+    MCQuantizeNext(&cubes[offset], size - offset, level - 1, ws, time);
 }
 
 DTPalette *
@@ -406,7 +411,7 @@ MCQuantizeData(
     };
 
     MCShrinkCube(&ws->cubes[0], time);
-    MCQuantizeNext(ws->cubes, ws->palette->size, ws->level, time);
+    MCQuantizeNext(ws->cubes, ws->palette->size, ws->level, &ws->mp, time);
 
     /* find final cube averages */
     for (size_t i = 0; i < ws->palette->size; i++) {
@@ -435,7 +440,8 @@ void
 MCTimeReport(
     mc_time_t *time
 ) {
-    const double part_theoretical = (32.0/25.0);
+    const double dc_theoretical = (32.0/3.0);
+    const double part_theoretical = (32.0/21.0);
     const double shrink_theoretical = (32.0/3.0);
 
     double mc_time = TIME_NORM(0, time->mc_time);
@@ -452,6 +458,10 @@ MCTimeReport(
     double align_pix = ((double)time->align_units) / align_time;
     double align_peak = (align_pix / part_theoretical) * 100;
 
+    double dc_time = TIME_NORM(0, time->dc_time);
+    double dc_pix = ((double)time->dc_units) / dc_time;
+    double dc_peak = (dc_pix / dc_theoretical) * 100;
+
     double shrink_time = TIME_NORM(0, time->shrink_time);
     double shrink_pix = ((double)time->shrink_units) / shrink_time;
     double shrink_peak = (shrink_pix / shrink_theoretical) * 100;
@@ -461,5 +471,6 @@ MCTimeReport(
     printf("Median Partition%4s%-20.6lf%-20.6lf--\n", "", mid_time, mid_pix);
     printf("Partition%11s%-20.6lf%-20.6lf%.2lf%%\n", "", part_time, part_pix, part_peak);
     printf("Align Partition%5s%-20.6lf%-20.6lf%.2lf%%\n", "", align_time, align_pix, align_peak);
+    printf("Do Compare%10s%-20.6lf%-20.6lf%.2lf%%\n", "", dc_time, dc_pix, dc_peak);
     printf("Shrink%14s%-20.6lf%-20.6lf%.2lf%%\n", "", shrink_time, shrink_pix, shrink_peak);
 }

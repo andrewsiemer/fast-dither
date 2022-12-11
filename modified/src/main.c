@@ -182,7 +182,7 @@ DTPalettePacked *
 QuantizedPaletteForImage(DTImage *image, size_t size)
 {
     SplitImage *img = CreateSplitImage(image);
-    MCWorkspace *ws = MCWorkspaceMake((mc_byte_t) (double) log2(size));
+    MCWorkspace *ws = MCWorkspaceMake((mc_byte_t) (double) log2(size), image->width * image->height);
     DTPalettePacked *palette = XMalloc(sizeof(DTPalettePacked));
 
     palette->colors = XMalloc(size*sizeof(int)*3);
@@ -191,16 +191,18 @@ QuantizedPaletteForImage(DTImage *image, size_t size)
 
     mc_time_t mc_time;
     MCTimeInit(&mc_time);
-
     DTPalette *mc = MCQuantizeData(img, ws, &mc_time);
+    MCTimeReport(&mc_time);
 
+    printf("Palette = { ");
     for (size_t i = 0; i < palette->size; i++) {
         palette->colors[i] = mc->colors[i].r;
         palette->colors[palette->size+i] = mc->colors[i].g;
         palette->colors[palette->size*2+i] = mc->colors[i].b;
+        if (i > 0) { printf(", "); }
+        printf("(%u,%u,%u)", mc->colors[i].r, mc->colors[i].g, mc->colors[i].b);
     }
-
-    MCTimeReport(&mc_time);
+    printf("}\n");
 
     MCWorkspaceDestroy(ws);
     DestroySplitImage(img);

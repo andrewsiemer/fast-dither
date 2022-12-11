@@ -28,6 +28,6 @@ src/include/sort_lut.h: sort_lut
 src/MedianPartition.o: src/include/sort_lut.h
 
 #CC = gcc
-src/MedianPartition.o: CFLAGS += -Wno-cast-align
+src/MedianPartition.o: CFLAGS += -Wno-cast-align -Wno-shadow
 src/MCQuantization.o: CFLAGS += -Wno-cast-align
 src/DTPalette.o: CFLAGS += -Wno-cast-align
