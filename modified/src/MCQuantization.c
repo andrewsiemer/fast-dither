@@ -440,11 +440,10 @@ void
 MCTimeReport(
     mc_time_t *time
 ) {
-    const double dc_theoretical = (32.0/4.0);
     const double sub_theoretical = (32.0/11.0);
     const double full_theoretical = (32.0/11.0);
-    //const double part_theoretical = (32.0/21.0); <- Too powerful :(
-    const double part_theoretical = (32.0/26.0);
+    const double part_theoretical = (32.0/21.0);
+    //const double part_theoretical = (32.0/22.0);
     const double shrink_theoretical = (32.0/3.0);
 
     double mc_time = TIME_NORM(0, time->mc_time);
@@ -469,10 +468,6 @@ MCTimeReport(
     double sub_pix = ((double)time->sub_units) / sub_time;
     double sub_peak = (sub_pix / sub_theoretical) * 100;
 
-    double dc_time = TIME_NORM(0, time->dc_time);
-    double dc_pix = ((double)time->dc_units) / dc_time;
-    double dc_peak = (dc_pix / dc_theoretical) * 100;
-
     double shrink_time = TIME_NORM(0, time->shrink_time);
     double shrink_pix = ((double)time->shrink_units) / shrink_time;
     double shrink_peak = (shrink_pix / shrink_theoretical) * 100;
@@ -484,6 +479,5 @@ MCTimeReport(
     printf("Align Partition%10s%-20.6lf%-20.6lf%.2lf%%\n", "", align_time, align_pix, align_peak);
     printf("Align Full-Partition%5s%-20.6lf%-20.6lf%.2lf%%\n", "", full_time, full_pix, full_peak);
     printf("Align Sub-Partition%6s%-20.6lf%-20.6lf%.2lf%%\n", "", sub_time, sub_pix, sub_peak);
-    printf("Do Compare%15s%-20.6lf%-20.6lf%.2lf%%\n", "", dc_time, dc_pix, dc_peak);
     printf("Shrink%19s%-20.6lf%-20.6lf%.2lf%%\n", "", shrink_time, shrink_pix, shrink_peak);
 }

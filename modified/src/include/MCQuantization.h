@@ -31,8 +31,6 @@ typedef struct {
     unsigned long long mc_units;
     unsigned long long align_time;
     unsigned long long align_units;
-    unsigned long long dc_time;
-    unsigned long long dc_units;
     unsigned long long sub_time;
     unsigned long long sub_units;
     unsigned long long full_time;

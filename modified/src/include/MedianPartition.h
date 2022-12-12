@@ -11,6 +11,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <immintrin.h>
+
 #include <MCQuantization.h>
 
 /** @brief Holds the popcounts from the movemask within MedianPartition. */
@@ -23,8 +25,10 @@ typedef struct {
 
 /** @brief Holds temporary data between the phases of MedianPartition. */
 typedef struct {
-    uint32_t *mask;
-    popcount_t *counts;
+    uint32_t *counts;
+    __m256i *s1;
+    __m256i *s2;
+    __m256i *s3;
 } mp_workspace_t;
 
 /**
