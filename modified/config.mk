@@ -18,7 +18,7 @@ OBJECTS =\
 TARGET = dither
 
 # Threading? (yes/no)
-USE_OMP = yes
+USE_OMP = no
 
 # The clang version on these machines doesn't support OpenMP. Clang took
 # forever to add support, and many features are still missing, actually.
