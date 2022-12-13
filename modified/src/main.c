@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <math.h>
+#include <assert.h>
 #include <DTImage.h>
 #include <DTDither.h>
 #include <DTPalette.h>
@@ -169,7 +170,7 @@ ReadPaletteFromStdin(size_t size)
 
     unsigned int r, g, b;
     for (size_t i = 0; i < size; i++) {
-        scanf(" %d %d %d", &r, &g, &b);
+        assert(scanf(" %d %d %d", &r, &g, &b) == 3);
         palette->colors[i] = (byte) r;
         palette->colors[palette->size+i] = (byte) g;
         palette->colors[palette->size*2+i] = (byte) b;
