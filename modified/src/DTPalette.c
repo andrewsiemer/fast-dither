@@ -9,6 +9,7 @@
 #include <DTPalette.h>
 #include <stdlib.h>
 #include <math.h>
+#include <assert.h>
 #include <UtilMacro.h>
 #include <immintrin.h>
 #include <XMalloc.h>
@@ -69,7 +70,7 @@ StandardPaletteRGB()
 }
 
 DTPixel
-FindClosestColorFromPalette(DTPixel needle, DTPalettePacked *palette)
+FindClosestColorFromPalette(DTPixel needle, DTPalettePacked *palette, palette_time_t *time)
 {
     unsigned long long ts1, ts2;
     TIMESTAMP(ts1);
@@ -117,7 +118,7 @@ FindClosestColorFromPalette(DTPixel needle, DTPalettePacked *palette)
         // find the slices where the minimum is updated
         mask = _mm256_cmpgt_epi32(min_val, dist);
         // update the indices
-         min_idx = _mm256_blendv_epi8(min_idx, curr_idx, mask);
+        min_idx = _mm256_blendv_epi8(min_idx, curr_idx, mask);
         // update the minimum (could use a "blend" here, but min is faster)
         min_val = _mm256_min_epi32(dist, min_val);
         // update the current indices
@@ -152,9 +153,30 @@ FindClosestColorFromPalette(DTPixel needle, DTPalettePacked *palette)
     };
 
     TIMESTAMP(ts2);
-    (void)ts1;
-    (void)ts2;
-    // TIME_REPORT("PaletteSearch", ts1, ts2);
+    time->search_time += (ts2 - ts1);
+    time->search_units += palette->size*3;
 
     return ret;
+}
+
+void
+PaletteTimeInit(palette_time_t *time) {
+    assert(time);
+    *time = (palette_time_t) { .search_time = 0 };
+}
+
+void
+PaletteTimeReport(palette_time_t *time) {
+    const double ops_per_pix = 3.0;
+    const double pix_per_kernel = 32.0;
+    const double ops_per_kernel = pix_per_kernel*ops_per_pix; // 6 mullo * 16 way SIMD
+    const double op_throughput = 0.5; // mullo: 2 every 1 cycles
+    const double search_theoretical = ops_per_kernel/TIME_NORM(0, ops_per_kernel*op_throughput); // iops/cycle
+
+    double search_time = TIME_NORM(0, time->search_time);
+    double search_perf = (((double)time->search_units) / search_time); // iops/cycle
+    double search_pix = search_perf/3; // pixels/cycle
+    double search_peak = (search_perf / search_theoretical) * 100;
+
+    printf("Palette Search%11s%-20.6lf%-20.6lf%.2lf%%\n", "", search_time, search_pix, search_peak);
 }

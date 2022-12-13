@@ -152,7 +152,7 @@ static void fsdither_kernel_simd(int16_t *input, // Array A
  * 
  */
 static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, size_t width, size_t height,
-                     DTPalettePacked *palette, dt_time_t* time)
+                     DTPalettePacked *palette, dt_time_t* time, palette_time_t *palette_time)
 {
     unsigned long color_size = height * width;
     __attribute__((aligned(32))) int16_t throwaway[16];
@@ -176,7 +176,7 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
                     input.r = MAX(MIN(shifted_input[offset+color_size*0], 255), 0);
                     input.g = MAX(MIN(shifted_input[offset+color_size*1], 255), 0);
                     input.b = MAX(MIN(shifted_input[offset+color_size*2], 255), 0);
-                    output = FindClosestColorFromPalette(input, palette);
+                    output = FindClosestColorFromPalette(input, palette, palette_time);
                     shifted_output[offset+color_size*0] = output.r;
                     shifted_output[offset+color_size*1] = output.g;
                     shifted_output[offset+color_size*2] = output.b;
@@ -189,7 +189,7 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
                     input.r = MAX(MIN(shifted_input[offset+16+color_size*0], 255), 0);
                     input.g = MAX(MIN(shifted_input[offset+16+color_size*1], 255), 0);
                     input.b = MAX(MIN(shifted_input[offset+16+color_size*2], 255), 0);
-                    output = FindClosestColorFromPalette(input, palette);
+                    output = FindClosestColorFromPalette(input, palette, palette_time);
                     shifted_output[offset+16+color_size*0] = output.r;
                     shifted_output[offset+16+color_size*1] = output.g;
                     shifted_output[offset+16+color_size*2] = output.b;
@@ -207,7 +207,7 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
                         input.r = MAX(MIN(shifted_input[offset+32+k+color_size*0], 255), 0);
                         input.g = MAX(MIN(shifted_input[offset+32+k+color_size*1], 255), 0);
                         input.b = MAX(MIN(shifted_input[offset+32+k+color_size*2], 255), 0);
-                        output = FindClosestColorFromPalette(input, palette);
+                        output = FindClosestColorFromPalette(input, palette, palette_time);
                         shifted_output[offset+32+k+color_size*0] = output.r;
                         shifted_output[offset+32+k+color_size*1] = output.g;
                         shifted_output[offset+32+k+color_size*2] = output.b;
@@ -238,7 +238,7 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
                 input.r = shifted_input[j*16+offset+0*color_size+k];
                 input.g = shifted_input[j*16+offset+1*color_size+k];
                 input.b = shifted_input[j*16+offset+2*color_size+k];
-                DTPixel output = FindClosestColorFromPalette(input, palette);
+                DTPixel output = FindClosestColorFromPalette(input, palette, palette_time);
                 shifted_output[j*16+offset+k+color_size*0] = output.r;
                 shifted_output[j*16+offset+k+color_size*1] = output.g;
                 shifted_output[j*16+offset+k+color_size*2] = output.b;
@@ -362,7 +362,7 @@ void DTTimeReport(dt_time_t *time)
 }
 
 void
-ApplyFloydSteinbergDither(DTImage *image, DTPalettePacked *palette)
+ApplyFloydSteinbergDither(DTImage *image, DTPalettePacked *palette, palette_time_t *palette_time)
 {
     dt_time_t t;
     DTTimeInit(&t);
@@ -376,7 +376,7 @@ ApplyFloydSteinbergDither(DTImage *image, DTPalettePacked *palette)
     posix_memalign((void**) &shifted_output, 64, 3*shifted_width*shifted_height*sizeof(int16_t));
     memset(shifted_output, 0, 3*shifted_width*shifted_height*sizeof(int16_t));
 
-    fsdither_runner(shifted_memory, shifted_output, shifted_width, shifted_height, palette, &t);
+    fsdither_runner(shifted_memory, shifted_output, shifted_width, shifted_height, palette, &t, palette_time);
     deshift_memory(image->pixels, shifted_output, image->width, image->height,
                                              shifted_width, shifted_height, &t);
     free(shifted_memory);
