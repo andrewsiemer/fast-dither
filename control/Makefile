@@ -35,11 +35,17 @@ CFLAGS =\
 
 include config.mk
 
+# Flags which only work for clang.
+CLANG_CFLAGS = -Weverything -Wno-padded -Wno-covered-switch-default\
+               -Wno-unused-macros -Wno-gnu-statement-expression
+ANALYZER_CFLAGS = $(CFLAGS) $(CLANG_CFLAGS) -Wno-source-uses-openmp
+
 # Configure build for OpenMP, if requested.
 ifeq ($(USE_OMP),yes)
 
 ifeq ($(CC),gcc)
 CFLAGS += -fopenmp
+CLANG_CFLAGS += -Qunused-arguments -Wno-source-uses-openmp
 endif
 ifeq ($(CC),clang)
 CFLAGS += -fopenmp -Qunused-arguments
@@ -50,18 +56,13 @@ else
 
 ifeq ($(CC),gcc)
 CFLAGS += -Wno-unknown-pragmas
+CLANG_CFLAGS += -Wno-source-uses-openmp
 endif
 ifeq ($(CC),clang)
 CFLAGS += -Wno-source-uses-openmp
 endif
 
 endif
-
-
-# Flags which only work for clang.
-CLANG_CFLAGS = -Weverything -Wno-padded -Wno-covered-switch-default\
-               -Wno-unused-macros -Wno-gnu-statement-expression
-ANALYZER_CFLAGS = $(CFLAGS) $(CLANG_CFLAGS) -Wno-source-uses-openmp
 
 ifeq ($(CC),clang)
 CFLAGS += $(CLANG_CFLAGS)

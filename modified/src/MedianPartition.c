@@ -160,13 +160,12 @@ __attribute__((aligned (32))) static const uint8_t rrl_shuffle_hi[16][32] = {
  * that xmmN = ymmN, so we just pick some and then warn the compiler that we
  * smashed them.
  */
-#define GATHER64_SI256(i0, i1, i2, i3)\
+#define GATHER64_SI256(q, i0, i1, i2, i3)\
 ({\
     register __m256i _ret, _tmp;\
     __asm__ (\
-        "vmovdqa %6, %%ymm0\n\t"\
-        "vpmaskmovq %4, %%ymm0, %0\n\t"\
-        "vpmaskmovq %5, %%ymm0, %1\n\t"\
+        "vpmaskmovq %4, %6, %0\n\t"\
+        "vpmaskmovq %5, %6, %1\n\t"\
         "vmovq %2, %%xmm0\n\t"\
         "vpor %%ymm0, %0, %0\n\t"\
         "vmovq %3, %%xmm0\n\t"\
@@ -178,25 +177,24 @@ __attribute__((aligned (32))) static const uint8_t rrl_shuffle_hi[16][32] = {
           "m" (*i1),\
           "m" (*((i2) - 2)),\
           "m" (*((i3) - 2)),\
-          "m" (* (__m256i*) quarter_mask)\
+          "x" (q)\
         : "xmm0"\
     );\
     _ret;\
 })
 
 /** @brief Gathers 2 128-bit elements into an m256i. */
-#define GATHER128_SI256(i0, i1)\
+#define GATHER128_SI256(h, i0, i1)\
 ({\
     register __m256i _ret;\
     __asm__ (\
-        "vmovdqa %3, %0\n\t"\
         "movdqa %1, %%xmm0\n\t"\
-        "vpmaskmovq %2, %0, %0\n\t"\
+        "vpmaskmovq %2, %3, %0\n\t"\
         "vpor %%ymm0, %0, %0\n\t"\
         : "=x" (_ret)\
         : "m" (*i0),\
           "m" (* (__m256i*) ((i1) - 1)),\
-          "m" (* (__m256i*) half_mask)\
+          "x" (h)\
         : "xmm0"\
     );\
     _ret;\
@@ -219,20 +217,23 @@ AlignSubPartition32(
     size_t size,
     uint8_t pivot
 ) {
-    __m256i pivots[1];
-    register __m256i tmp1;
-    register __m256i a1, pa1, pa2, pa3, ppa1, ppa2, ppa3;
-    register __m256i pa1_lo, pa2_lo, pa3_lo, ppa1_lo, ppa2_lo, ppa3_lo;
-    register uint32_t am, pam;
-    register uint32_t loc, lloc, hloc, ploc, plloc, phloc, pploc;
+    register __m256i adjust, pivots, hmask, qmask;
+    register __m256i a1, pa1, pa2, pa3;
+    register __m256i sort_mask, p_sort_mask, tmp1, tmp2;
+    register __m256i a1_lo, a2_lo, a3_lo;
+    register uint32_t am, loc, lloc, hloc, ploc;
 
-    tmp1 = _mm256_load_si256((__m256i*) cmp_adjust);
-    pivots[0] = _mm256_set1_epi8((int8_t) pivot);
-    pivots[0] = _mm256_add_epi8(tmp1, pivots[0]);
+    adjust = _mm256_load_si256((__m256i*) cmp_adjust);
+    pivots = _mm256_set1_epi8((int8_t) pivot);
+    pivots = _mm256_add_epi8(adjust, pivots);
 
+    qmask = _mm256_load_si256((__m256i*) quarter_mask);
+    hmask = _mm256_load_si256((__m256i*) half_mask);
+    sort_mask = _mm256_load_si256((__m256i*) shuffle_adjust);
     a1 = _mm256_load_si256(&ch1[0]);
-    tmp1 = _mm256_add_epi8(a1, tmp1);
-    tmp1 = _mm256_cmpgt_epi8(tmp1, pivots[0]);
+
+    tmp1 = _mm256_add_epi8(a1, adjust);
+    tmp1 = _mm256_cmpgt_epi8(tmp1, pivots);
     am = (unsigned int) _mm256_movemask_epi8(tmp1);
 
     lloc = (uint8_t) (unsigned int) __builtin_popcount(am & 0xFF);
@@ -240,255 +241,157 @@ AlignSubPartition32(
     loc  = (uint8_t) (unsigned int) __builtin_popcount(am & 0xFFFF);
     ws->counts[0] = (uint8_t) (unsigned int) __builtin_popcount(am);
 
-    pa1 = a1;
-    pam = am;
-    ploc = loc;
-    plloc = lloc;
-    phloc = hloc;
-
-    if (size > 1) {
-        pa1_lo = _mm256_load_si256((__m256i*) shuffle_adjust);
-        a1 = _mm256_load_si256(&ch1[1]);
-        pa2_lo = _mm256_load_si256((__m256i*) cmp_adjust);
-        pa3_lo = _mm256_load_si256(&pivots[0]);
-        pa2 = _mm256_load_si256(&ch2[0]);
-        pa3 = _mm256_load_si256(&ch3[0]);
-
-        tmp1 = _mm256_add_epi8(a1, pa2_lo);
-        tmp1 = _mm256_cmpgt_epi8(tmp1, pa3_lo);
-        am = (unsigned int) _mm256_movemask_epi8(tmp1);
-
-        lloc = (uint8_t) (unsigned int) __builtin_popcount(am & 0xFF);
-        hloc = (uint8_t) (unsigned int) __builtin_popcount((am >> 16) & 0xFF);
-        loc  = (uint8_t) (unsigned int) __builtin_popcount(am & 0xFFFF);
-        ws->counts[1] = (uint8_t) (unsigned int) __builtin_popcount(am);
-
-        /******** ITERATION SPLIT ********/
-
-        // Load in the 8-element sort vector, and the shuffle vector for
-        // 32-element sorting.
-        tmp1 = GATHER64_SI256(
-            (uint64_t*) sort1b_4x8[(pam >> 0) & 0xFF],
-            (uint64_t*) sort1b_4x8[(pam >> 8) & 0xFF],
-            (uint64_t*) sort1b_4x8[(pam >> 16) & 0xFF],
-            (uint64_t*) sort1b_4x8[(pam >> 24) & 0xFF]
-        );
-        pa1_lo = _mm256_add_epi8(pa1_lo, tmp1);
-
-        // Load in the 16-element sort vectors pieces.
-        pa2_lo = _mm256_load_si256((__m256i*) rrl_shuffle_hi[ploc & 0xF]);
-        tmp1 = GATHER128_SI256(
-            (__m128i*) sort1b_2x16[plloc],
-            (__m128i*) sort1b_2x16[phloc]
-        );
-
-        // Blend the 8/16 sort evcotrs together, then preroll the resulting
-        // shuffle vector to create a vector that will 16-sort and pre-roll
-        // the a vectors.
-        pa1_lo = _mm256_shuffle_epi8(pa1_lo, tmp1);
-        pa1_lo = _mm256_shuffle_epi8(pa1_lo, pa2_lo);
-
-        // Apply the shuffle to the a vectors.
-        pa1 = _mm256_shuffle_epi8(pa1, pa1_lo);
-        pa2 = _mm256_shuffle_epi8(pa2, pa1_lo);
-        pa3 = _mm256_shuffle_epi8(pa3, pa1_lo);
-
-        // Reverse each channel to allow it to be blended. The rolling of
-        // the high channel was already done. Note that the srl_blend vector
-        // has the low half of each SiMD vector inverted in anticipation of
-        // this permute time save (where we simply reverse instead of
-        // creating a high-high/low-low vector).
-        pa1_lo = _mm256_permute2x128_si256(pa1, pa1, 0x01);
-        pa2_lo = _mm256_permute2x128_si256(pa2, pa2, 0x01);
-        pa3_lo = _mm256_permute2x128_si256(pa3, pa3, 0x01);
-
-        ppa1 = pa1;
-        ppa2 = pa2;
-        ppa3 = pa3;
-        ppa1_lo = pa1_lo;
-        ppa2_lo = pa2_lo;
-        ppa3_lo = pa3_lo;
-        pploc = ploc;
-        pa1 = a1;
-        pam = am;
-        ploc = loc;
-        plloc = lloc;
-        phloc = hloc;
-
-        for (size_t i = 2; i < size; i++) {
-            a1 = _mm256_load_si256(&ch1[i]);
-            pa2_lo = _mm256_load_si256((__m256i*) cmp_adjust);
-            pa3_lo = _mm256_load_si256(&pivots[0]);
-            pa1_lo = _mm256_load_si256((__m256i*) shuffle_adjust);
-            pa2 = _mm256_load_si256(&ch2[i-1]);
-            pa3 = _mm256_load_si256(&ch3[i-1]);
-
-            tmp1 = _mm256_add_epi8(a1, pa2_lo);
-            tmp1 = _mm256_cmpgt_epi8(tmp1, pa3_lo);
-            am = (unsigned int) _mm256_movemask_epi8(tmp1);
-
-            lloc = (uint8_t) (unsigned int) __builtin_popcount(am & 0xFF);
-            hloc = (uint8_t) (unsigned int) __builtin_popcount((am >> 16) & 0xFF);
-            loc  = (uint8_t) (unsigned int) __builtin_popcount(am & 0xFFFF);
-            ws->counts[i] = (uint8_t) (unsigned int) __builtin_popcount(am);
-
-            /******** ITERATION SPLIT ********/
-
-            // Load in the 8-element sort vector, and the shuffle vector for
-            // 32-element sorting.
-            tmp1 = GATHER64_SI256(
-                (uint64_t*) sort1b_4x8[(pam >> 0) & 0xFF],
-                (uint64_t*) sort1b_4x8[(pam >> 8) & 0xFF],
-                (uint64_t*) sort1b_4x8[(pam >> 16) & 0xFF],
-                (uint64_t*) sort1b_4x8[(pam >> 24) & 0xFF]
-            );
-            pa1_lo = _mm256_add_epi8(pa1_lo, tmp1);
-
-            // Load in the 16-element sort vectors pieces.
-            tmp1 = GATHER128_SI256(
-                (__m128i*) sort1b_2x16[plloc],
-                (__m128i*) sort1b_2x16[phloc]
-            );
-            pa2_lo = _mm256_load_si256((__m256i*) rrl_shuffle_hi[ploc & 0xF]);
-
-            // Blend the 8/16 sort evcotrs together, then preroll the resulting
-            // shuffle vector to create a vector that will 16-sort and pre-roll
-            // the a vectors.
-            pa1_lo = _mm256_shuffle_epi8(pa1_lo, tmp1);
-            pa1_lo = _mm256_shuffle_epi8(pa1_lo, pa2_lo);
-
-            // Apply the shuffle to the a vectors.
-            pa1 = _mm256_shuffle_epi8(pa1, pa1_lo);
-            pa2 = _mm256_shuffle_epi8(pa2, pa1_lo);
-            pa3 = _mm256_shuffle_epi8(pa3, pa1_lo);
-
-            // Reverse each channel to allow it to be blended. The rolling of
-            // the high channel was already done. Note that the srl_blend vector
-            // has the low half of each SiMD vector inverted in anticipation of
-            // this permute time save (where we simply reverse instead of
-            // creating a high-high/low-low vector).
-            pa1_lo = _mm256_permute2x128_si256(pa1, pa1, 0x01);
-            pa2_lo = _mm256_permute2x128_si256(pa2, pa2, 0x01);
-            pa3_lo = _mm256_permute2x128_si256(pa3, pa3, 0x01);
-
-            /******** ITERATION SPLIT ********/
-
-            // Use the mask and rolled high-high vector to insert the upper half
-            // of each vector in between the low halfs low and high values.
-            tmp1 = _mm256_load_si256((__m256i*) srl_blend[pploc]);
-            ppa1 = _mm256_and_si256(tmp1, ppa1);
-            ppa2 = _mm256_and_si256(tmp1, ppa2);
-            ppa3 = _mm256_and_si256(tmp1, ppa3);
-            ppa1_lo = _mm256_andnot_si256(tmp1, ppa1_lo);
-            ppa2_lo = _mm256_andnot_si256(tmp1, ppa2_lo);
-            ppa3_lo = _mm256_andnot_si256(tmp1, ppa3_lo);
-            ppa1 = _mm256_or_si256(ppa1, ppa1_lo);
-            ppa2 = _mm256_or_si256(ppa2, ppa2_lo);
-            ppa3 = _mm256_or_si256(ppa3, ppa3_lo);
-
-            _mm256_store_si256(&ch1[i-2], ppa1);
-            _mm256_store_si256(&ch2[i-2], ppa2);
-            _mm256_store_si256(&ch3[i-2], ppa3);
-
-            ppa1 = pa1;
-            ppa2 = pa2;
-            ppa3 = pa3;
-            ppa1_lo = pa1_lo;
-            ppa2_lo = pa2_lo;
-            ppa3_lo = pa3_lo;
-            pploc = ploc;
-
-            pa1 = a1;
-            pam = am;
-            ploc = loc;
-            plloc = lloc;
-            phloc = hloc;
-        }
-
-        // Use the mask and rolled high-high vector to insert the upper half
-        // of each vector in between the low halfs low and high values.
-        tmp1 = _mm256_load_si256((__m256i*) srl_blend[pploc]);
-        ppa1 = _mm256_and_si256(tmp1, ppa1);
-        ppa2 = _mm256_and_si256(tmp1, ppa2);
-        ppa3 = _mm256_and_si256(tmp1, ppa3);
-        ppa1_lo = _mm256_andnot_si256(tmp1, ppa1_lo);
-        ppa2_lo = _mm256_andnot_si256(tmp1, ppa2_lo);
-        ppa3_lo = _mm256_andnot_si256(tmp1, ppa3_lo);
-        ppa1 = _mm256_or_si256(ppa1, ppa1_lo);
-        ppa2 = _mm256_or_si256(ppa2, ppa2_lo);
-        ppa3 = _mm256_or_si256(ppa3, ppa3_lo);
-
-        _mm256_store_si256(&ch1[size-2], ppa1);
-        _mm256_store_si256(&ch2[size-2], ppa2);
-        _mm256_store_si256(&ch3[size-2], ppa3);
-    }
-
-    pa1_lo = _mm256_load_si256((__m256i*) shuffle_adjust);
-    pa2 = _mm256_load_si256(&ch2[size-1]);
-    pa3 = _mm256_load_si256(&ch3[size-1]);
-
     // Load in the 8-element sort vector, and the shuffle vector for
     // 32-element sorting.
     tmp1 = GATHER64_SI256(
-        (uint64_t*) sort1b_4x8[(pam >> 0) & 0xFF],
-        (uint64_t*) sort1b_4x8[(pam >> 8) & 0xFF],
-        (uint64_t*) sort1b_4x8[(pam >> 16) & 0xFF],
-        (uint64_t*) sort1b_4x8[(pam >> 24) & 0xFF]
+        qmask,
+        (uint64_t*) sort1b_4x8[(am >> 0) & 0xFF],
+        (uint64_t*) sort1b_4x8[(am >> 8) & 0xFF],
+        (uint64_t*) sort1b_4x8[(am >> 16) & 0xFF],
+        (uint64_t*) sort1b_4x8[(am >> 24) & 0xFF]
     );
-    pa1_lo = _mm256_add_epi8(pa1_lo, tmp1);
+    sort_mask = _mm256_add_epi8(sort_mask, tmp1);
 
     // Load in the 16-element sort vectors pieces.
-    pa2_lo = _mm256_load_si256((__m256i*) rrl_shuffle_hi[ploc & 0xF]);
+    tmp2 = _mm256_load_si256((__m256i*) rrl_shuffle_hi[loc & 0xF]);
     tmp1 = GATHER128_SI256(
-        (__m128i*) sort1b_2x16[plloc],
-        (__m128i*) sort1b_2x16[phloc]
+        hmask,
+        (__m128i*) sort1b_2x16[lloc],
+        (__m128i*) sort1b_2x16[hloc]
     );
 
     // Blend the 8/16 sort evcotrs together, then preroll the resulting
     // shuffle vector to create a vector that will 16-sort and pre-roll
     // the a vectors.
-    pa1_lo = _mm256_shuffle_epi8(pa1_lo, tmp1);
-    pa1_lo = _mm256_shuffle_epi8(pa1_lo, pa2_lo);
+    sort_mask = _mm256_shuffle_epi8(sort_mask, tmp1);
+    sort_mask = _mm256_shuffle_epi8(sort_mask, tmp2);
 
     // Apply the shuffle to the a vectors.
-    pa1 = _mm256_shuffle_epi8(pa1, pa1_lo);
-    pa2 = _mm256_shuffle_epi8(pa2, pa1_lo);
-    pa3 = _mm256_shuffle_epi8(pa3, pa1_lo);
+    p_sort_mask = sort_mask;
+    pa1 = a1;
+    ploc = loc;
 
-    // Reverse each channel to allow it to be blended. The rolling of
-    // the high channel was already done. Note that the srl_blend vector
-    // has the low half of each SiMD vector inverted in anticipation of
-    // this permute time save (where we simply reverse instead of
-    // creating a high-high/low-low vector).
-    pa1_lo = _mm256_permute2x128_si256(pa1, pa1, 0x01);
-    pa2_lo = _mm256_permute2x128_si256(pa2, pa2, 0x01);
-    pa3_lo = _mm256_permute2x128_si256(pa3, pa3, 0x01);
+    for (size_t i = 1; i < size; i++) {
+        register uint64_t *sort8_0, *sort8_1, *sort8_2, *sort8_3;
+        register uint16_t amlo, amhi;
+
+        a1 = _mm256_load_si256(&ch1[i]);
+        sort_mask = _mm256_load_si256((__m256i*) shuffle_adjust);
+        pa2 = _mm256_load_si256(&ch2[i-1]);
+        pa3 = _mm256_load_si256(&ch3[i-1]);
+
+        tmp1 = _mm256_add_epi8(a1, adjust);
+        tmp1 = _mm256_cmpgt_epi8(tmp1, pivots);
+        am = (unsigned int) _mm256_movemask_epi8(tmp1);
+
+        ws->counts[i] = (uint8_t) (unsigned int) __builtin_popcount(am);
+
+        amlo = am & 0xFFFF;
+        amhi = am >> 16;
+        loc  = (uint8_t) (unsigned int) __builtin_popcount(amlo);
+
+        tmp1 = _mm256_load_si256((__m256i*) rrl_shuffle_hi[loc & 0xF]);
+
+        lloc = (uint8_t) (unsigned int) __builtin_popcount(amlo & 0xFF);
+        hloc = (uint8_t) (unsigned int) __builtin_popcount(amhi & 0xFF);
+
+        // Load in the 16-element sort vectors pieces.
+        tmp2 = GATHER128_SI256(
+            hmask,
+            (__m128i*) sort1b_2x16[lloc],
+            (__m128i*) sort1b_2x16[hloc]
+        );
+        tmp2 = _mm256_shuffle_epi8(tmp2, tmp1);
+
+        sort8_1 = (uint64_t*) sort1b_4x8[amlo >> 8];
+        sort8_0 = (uint64_t*) sort1b_4x8[amlo & 0xFF];
+        sort8_3 = (uint64_t*) sort1b_4x8[amhi >> 8];
+        sort8_2 = (uint64_t*) sort1b_4x8[amhi & 0xFF];
+
+        // Load in the 8-element sort vector, and the shuffle vector for
+        // 32-element sorting.
+        tmp1 = GATHER64_SI256(qmask, sort8_0, sort8_1, sort8_2, sort8_3);
+        sort_mask = _mm256_add_epi8(sort_mask, tmp1);
+
+        // Blend the 8/16 sort evcotrs together, then preroll the resulting
+        // shuffle vector to create a vector that will 16-sort and pre-roll
+        // the a vectors.
+        sort_mask = _mm256_shuffle_epi8(sort_mask, tmp2);
+
+        /******** ITERATION SPLIT ********/
+
+        tmp1 = _mm256_load_si256((__m256i*) srl_blend[ploc]);
+
+        // Apply the shuffle to the a vectors.
+        pa1 = _mm256_shuffle_epi8(pa1, p_sort_mask);
+        pa2 = _mm256_shuffle_epi8(pa2, p_sort_mask);
+        pa3 = _mm256_shuffle_epi8(pa3, p_sort_mask);
+
+        // Reverse each channel to allow it to be blended. The rolling of the
+        // high channel was already done. Note that the srl_blend vector has the
+        // low half of each SiMD vector inverted in anticipation of this permute
+        // time save (where we simply reverse instead of creating a
+        // high-high/low-low vector).
+        a1_lo = _mm256_permute2x128_si256(pa1, pa1, 0x01);
+        a2_lo = _mm256_permute2x128_si256(pa2, pa2, 0x01);
+        a3_lo = _mm256_permute2x128_si256(pa3, pa3, 0x01);
+
+        // Use the mask and rolled high-high vector to insert the upper half
+        // of each vector in between the low halfs low and high values.
+        pa1 = _mm256_and_si256(tmp1, pa1);
+        pa2 = _mm256_and_si256(tmp1, pa2);
+        pa3 = _mm256_and_si256(tmp1, pa3);
+        a1_lo = _mm256_andnot_si256(tmp1, a1_lo);
+        a2_lo = _mm256_andnot_si256(tmp1, a2_lo);
+        a3_lo = _mm256_andnot_si256(tmp1, a3_lo);
+        pa1 = _mm256_or_si256(pa1, a1_lo);
+        pa2 = _mm256_or_si256(pa2, a2_lo);
+        pa3 = _mm256_or_si256(pa3, a3_lo);
+
+        _mm256_store_si256(&ch1[i-1], pa1);
+        _mm256_store_si256(&ch2[i-1], pa2);
+        _mm256_store_si256(&ch3[i-1], pa3);
+
+        p_sort_mask = sort_mask;
+        pa1 = a1;
+        ploc = loc;
+    }
+
+    pa2 = _mm256_load_si256(&ch2[size-1]);
+    pa3 = _mm256_load_si256(&ch3[size-1]);
+
+    // Get the mask used to blend the a vectors.
+    tmp1 = _mm256_load_si256((__m256i*) srl_blend[ploc]);
 
     // Apply the shuffle to the a vectors.
-    ppa1 = pa1;
-    ppa2 = pa2;
-    ppa3 = pa3;
-    ppa1_lo = pa1_lo;
-    ppa2_lo = pa2_lo;
-    ppa3_lo = pa3_lo;
-    pploc = ploc;
+    pa1 = _mm256_shuffle_epi8(pa1, p_sort_mask);
+    pa2 = _mm256_shuffle_epi8(pa2, p_sort_mask);
+    pa3 = _mm256_shuffle_epi8(pa3, p_sort_mask);
+
+    // Reverse each channel to allow it to be blended. The rolling of the
+    // high channel was already done. Note that the srl_blend vector has the
+    // low half of each SiMD vector inverted in anticipation of this permute
+    // time save (where we simply reverse instead of creating a
+    // high-high/low-low vector).
+    a1_lo = _mm256_permute2x128_si256(pa1, pa1, 0x01);
+    a2_lo = _mm256_permute2x128_si256(pa2, pa2, 0x01);
+    a3_lo = _mm256_permute2x128_si256(pa3, pa3, 0x01);
 
     // Use the mask and rolled high-high vector to insert the upper half
     // of each vector in between the low halfs low and high values.
-    tmp1 = _mm256_load_si256((__m256i*) srl_blend[pploc]);
-    ppa1 = _mm256_and_si256(tmp1, ppa1);
-    ppa2 = _mm256_and_si256(tmp1, ppa2);
-    ppa3 = _mm256_and_si256(tmp1, ppa3);
-    ppa1_lo = _mm256_andnot_si256(tmp1, ppa1_lo);
-    ppa2_lo = _mm256_andnot_si256(tmp1, ppa2_lo);
-    ppa3_lo = _mm256_andnot_si256(tmp1, ppa3_lo);
-    ppa1 = _mm256_or_si256(ppa1, ppa1_lo);
-    ppa2 = _mm256_or_si256(ppa2, ppa2_lo);
-    ppa3 = _mm256_or_si256(ppa3, ppa3_lo);
+    pa1 = _mm256_and_si256(tmp1, pa1);
+    pa2 = _mm256_and_si256(tmp1, pa2);
+    pa3 = _mm256_and_si256(tmp1, pa3);
+    a1_lo = _mm256_andnot_si256(tmp1, a1_lo);
+    a2_lo = _mm256_andnot_si256(tmp1, a2_lo);
+    a3_lo = _mm256_andnot_si256(tmp1, a3_lo);
+    pa1 = _mm256_or_si256(pa1, a1_lo);
+    pa2 = _mm256_or_si256(pa2, a2_lo);
+    pa3 = _mm256_or_si256(pa3, a3_lo);
 
-    _mm256_store_si256(&ch1[size-1], ppa1);
-    _mm256_store_si256(&ch2[size-1], ppa2);
-    _mm256_store_si256(&ch3[size-1], ppa3);
+    _mm256_store_si256(&ch1[size-1], pa1);
+    _mm256_store_si256(&ch2[size-1], pa2);
+    _mm256_store_si256(&ch3[size-1], pa3);
 }
 
 /**
@@ -588,8 +491,8 @@ AlignFullPartition(
         }
 
         // Update the high-value counts.
-        register uint32_t hvc_tmp = MIN(32, (ac) + (bc));
-        ac = (uint32_t) MAX((int32_t)0, (int32_t) (((ac) + (bc)) - 32));
+        register uint32_t hvc_tmp = MIN(32, ac + bc);
+        ac = (uint32_t) MAX((int32_t)0, (int32_t) ((ac + bc) - 32));
         bc = hvc_tmp;
 
         // Determine which side is full. If ac is zero, then the a vectors are

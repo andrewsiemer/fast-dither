@@ -427,7 +427,7 @@ ParallelMCQuantizeNext(
             };
 
             MCShrinkCube(&cubes[0], &t1);
-            MCQuantizeNext(&cubes[0], offset, level - 1, &local_ws, &t1);
+            ParallelMCQuantizeNext(&cubes[0], offset, level - 1, &local_ws, &t1);
         }
         #pragma omp section
         {
@@ -436,7 +436,7 @@ ParallelMCQuantizeNext(
             };
 
             MCShrinkCube(&cubes[offset], &t2);
-            MCQuantizeNext(&cubes[offset], size - offset, level - 1, &local_ws, &t2);
+            ParallelMCQuantizeNext(&cubes[offset], size - offset, level - 1, &local_ws, &t2);
         }
     }
 
