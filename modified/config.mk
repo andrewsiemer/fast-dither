@@ -18,11 +18,11 @@ OBJECTS =\
 TARGET = dither
 
 # Threading? (yes/no)
-USE_OMP = yes
+USE_OMP = no
 
 # The clang version on these machines doesn't support OpenMP. Clang took
 # forever to add support, and many features are still missing, actually.
-CC = gcc
+CC = clang
 
 ### Build the sort look-up table for the 1-bit bitonic (4x8 byte) sort. ###
 
@@ -35,6 +35,6 @@ src/include/sort_lut.h: sort_lut
 src/MedianPartition.o: src/include/sort_lut.h
 
 #CC = gcc
-src/MedianPartition.o: CFLAGS += -Wno-cast-align -Wno-shadow
+src/MedianPartition.o: CFLAGS += -Wno-cast-align -Wno-shadow -Wno-array-bounds-pointer-arithmetic
 src/MCQuantization.o: CFLAGS += -Wno-cast-align
 src/DTPalette.o: CFLAGS += -Wno-cast-align
