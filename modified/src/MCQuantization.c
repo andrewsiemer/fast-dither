@@ -133,15 +133,9 @@ MCShrinkCube(
             b_tmp3 = _mm256_load_si256(&b_align[i+2]);
 
 #if 0
-            __builtin_prefetch(&r_align[i+6]);
-            __builtin_prefetch(&g_align[i+6]);
-            __builtin_prefetch(&b_align[i+6]);
-            __builtin_prefetch(&r_align[i+7]);
-            __builtin_prefetch(&g_align[i+7]);
-            __builtin_prefetch(&b_align[i+7]);
-            __builtin_prefetch(&r_align[i+8]);
-            __builtin_prefetch(&g_align[i+8]);
-            __builtin_prefetch(&b_align[i+8]);
+            __builtin_prefetch(&r_align[i+256]);
+            __builtin_prefetch(&g_align[i+256]);
+            __builtin_prefetch(&b_align[i+256]);
 #endif
 
             r_min = _mm256_min_epu8(r_min, r_tmp1);
@@ -401,6 +395,24 @@ MCQuantizeNext(
 ) {
     if (level == 0) { return; }
 
+    size_t offset = size >> 1;
+    MCSplit(&cubes[0], &cubes[offset], ws, time);
+    MCShrinkCube(&cubes[0], time);
+    MCShrinkCube(&cubes[offset], time);
+    MCQuantizeNext(&cubes[0], offset, level - 1, ws, time);
+    MCQuantizeNext(&cubes[offset], size - offset, level - 1, ws, time);
+}
+
+static void
+ParallelMCQuantizeNext(
+    MCCube *cubes,
+    size_t size,
+    mc_byte_t level,
+    mp_workspace_t *ws,
+    mc_time_t *time
+) {
+    if (level == 0) { return; }
+
     mc_time_t t1, t2;
     MCTimeInit(&t1);
     MCTimeInit(&t2);
@@ -441,6 +453,11 @@ MCQuantizeData(
     assert(img);
     assert(ws);
 
+    // This seems to be around the point where creating more than one thread
+    // has a real performance benefit. Images smaller than this are eaten
+    // alive by the cost of creating threads.
+    const size_t parallel_threshold = 2000000;
+
     unsigned long long ts1, ts2;
     TIMESTAMP(ts1);
 
@@ -455,7 +472,11 @@ MCQuantizeData(
     };
 
     MCShrinkCube(&ws->cubes[0], time);
-    MCQuantizeNext(ws->cubes, ws->palette->size, ws->level, &ws->mp, time);
+    if (size >= parallel_threshold) {
+        ParallelMCQuantizeNext(ws->cubes, ws->palette->size, ws->level, &ws->mp, time);
+    } else {
+        MCQuantizeNext(ws->cubes, ws->palette->size, ws->level, &ws->mp, time);
+    }
 
     /* find final cube averages */
     for (size_t i = 0; i < ws->palette->size; i++) {
@@ -484,7 +505,7 @@ void
 MCTimeReport(
     mc_time_t *time
 ) {
-    const double sub_theoretical = (32.0/11.0);
+    const double sub_theoretical = (32.0/10.0);
     const double full_theoretical = (32.0/11.0);
     const double part_theoretical = (32.0/21.0);
     const double shrink_theoretical = (32.0/3.0);

@@ -15,14 +15,6 @@
 
 #include <MCQuantization.h>
 
-/** @brief Holds the popcounts from the movemask within MedianPartition. */
-typedef struct {
-    uint8_t llcnt;
-    uint8_t hlcnt;
-    uint8_t lcnt;
-    uint8_t hcnt;
-} popcount_t;
-
 /** @brief Holds temporary data between the phases of MedianPartition. */
 typedef struct {
     uint32_t *counts;

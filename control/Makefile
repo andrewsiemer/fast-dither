@@ -17,7 +17,7 @@ default: all
 ##### Configure build #####
 
 # Compiler. Clang has better warnings and static analysis.
-CC := gcc
+CC := clang
 
 # Directory containing all source code.
 SRC_ROOT = src
@@ -26,22 +26,45 @@ SRC_ROOT = src
 INC = $(SRC_ROOT) $(SRC_ROOT)/include
 
 # Libraries to link into the program.
-LIBS = -fopenmp
+LIBS =
 
 # Flags for use with the compiler. Currently assumes clang.
 CFLAGS =\
-	-std=c99 -Wall -Werror -mavx -mavx2 -mfma -fopenmp -O3 -ggdb\
+	-std=c99 -Wall -Werror -msse -msse2 -mavx -mavx2 -mfma -O3 -ggdb\
 	$(addprefix -I,$(wildcard $(INC)))
 
 include config.mk
 
+# Configure build for OpenMP, if requested.
+ifeq ($(USE_OMP),yes)
+
+ifeq ($(CC),gcc)
+CFLAGS += -fopenmp
+endif
+ifeq ($(CC),clang)
+CFLAGS += -fopenmp -Qunused-arguments
+endif
+
+LIBS += -fopenmp
+else
+
+ifeq ($(CC),gcc)
+CFLAGS += -Wno-unknown-pragmas
+endif
+ifeq ($(CC),clang)
+CFLAGS += -Wno-source-uses-openmp
+endif
+
+endif
+
+
 # Flags which only work for clang.
 ifeq ($(CC),clang)
 CFLAGS += -Weverything -Wno-padded -Wno-covered-switch-default\
-          -Wno-unused-macros
+          -Wno-unused-macros -Wno-gnu-statement-expression
 endif
 ifeq ($(CC),gcc)
-CFLAGS += -Wno-strict-aliasing
+CFLAGS += -Wextra -Wno-strict-aliasing
 endif
 
 # Static analysis program. We just use clang.
