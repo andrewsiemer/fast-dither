@@ -15,6 +15,19 @@
 #include <stdio.h>
 #include <string.h>
 
+/*
+void PRINT_M256_EPI16(__m256i input)
+{
+    int16_t *temp_array;
+    posix_memalign((void**) &temp_array, 64, 16 * sizeof(int16_t));
+    _mm256_store_si256((__m256i*) temp_array, input);
+    for (size_t i = 0; i < 16; i++)
+        printf("%d ", temp_array[i]);
+    printf("\n");
+    free(temp_array);
+}
+*/
+
 /**
  * 
 */
@@ -28,18 +41,20 @@ static int16_t fsdither_kernel_scalar(int16_t diff_3, int16_t diff_2, int16_t di
     return original + (diff_3 + diff_2 + diff_1 + diff_0);
 }
 
+
 /**
  * 
  * 
  */
 static void fsdither_kernel_simd(int16_t *input, // Array A
-                          int16_t *palette, // Array B
-                          int16_t *output, // Array B
-                          int16_t *offset // Array B
-                          )
+                                int16_t *palette, // Array B
+                                int16_t *output, // Array A
+                                int16_t *offset // Array A
+                                )
 {
     __m256i diff_cols[3];
     __m256i diff_offset;
+    __m256i original;
 
     // Data loading scope
     {
@@ -51,10 +66,9 @@ static void fsdither_kernel_simd(int16_t *input, // Array A
             diff_cols[i] = _mm256_sub_epi16(original, searched);
         }
 
-        diff_offset = _mm256_load_si256((__m256i*) &palette[i*16]);
+        original = _mm256_load_si256((__m256i*) &input[i*16]);
+        //diff_output = _mm256_load_si256((__m256i*) &palette[i*16]);
     }
-
-    __m256i diff_output;
     
     // Multiplications and Divisions
     {
@@ -71,7 +85,8 @@ static void fsdither_kernel_simd(int16_t *input, // Array A
             __m256i temp = _mm256_setzero_si256();
             temp = _mm256_blend_epi16(temp, wake_diff, 0x01);
             // Eliminate other 128b
-            diff_offset = _mm256_add_epi16(diff_offset, temp);
+            diff_offset = temp;
+            //diff_offset = _mm256_add_epi16(diff_offset, temp);
 
             // Shift wake-diff (7/16) bits
             // Create temp with swap lanes
@@ -83,42 +98,53 @@ static void fsdither_kernel_simd(int16_t *input, // Array A
             // Re-add inner lost 16b
             wake_diff = _mm256_blend_epi16(wake_diff, temp, 0x80); 
         }
+        //diff_output = _mm256_add_epi16(diff_output, wake_diff);
 
         // Calculate the 3/16 term
         diff_cols[2] = _mm256_mullo_epi16(diff_cols[2], scalar_3);
         diff_cols[2] = _mm256_srai_epi16(diff_cols[2], 4);
-        diff_output = _mm256_add_epi16(wake_diff, diff_cols[2]);
+        diff_cols[2] = _mm256_add_epi16(diff_cols[2], wake_diff);
 
         // Calculate the 5/16 term
         diff_cols[1] = _mm256_mullo_epi16(diff_cols[1], scalar_5);
         diff_cols[1] = _mm256_srai_epi16(diff_cols[1], 4);
-        diff_output = _mm256_add_epi16(diff_output, diff_cols[1]);
+        diff_cols[1] = _mm256_add_epi16(diff_cols[2], diff_cols[1]);
 
         // Calculate the 1/16 term
         diff_cols[0] = _mm256_srai_epi16(diff_cols[0], 4);
-        diff_output = _mm256_add_epi16(diff_output, diff_cols[0]);
+        diff_cols[0] = _mm256_add_epi16(diff_cols[1], diff_cols[0]);
     }
     
     // Data storing scope
     {
         // Finish shift
         // Left-shift temp all the way to the other side of the lane
-        __m256i offset_output = _mm256_bsrli_epi128(diff_output, 16-2); 
+        __m256i offset_output = _mm256_bsrli_epi128(diff_cols[0], 16-2); 
         // Create temp with swap lanes
         __m256i temp = _mm256_permute2x128_si256(offset_output, diff_offset, 0x02); 
         offset_output = _mm256_permute2x128_si256(offset_output, offset_output, 0x01);
 
         // Pop top 16b from both lanes
-        diff_output = _mm256_bslli_epi128(diff_output, 2); 
+        diff_cols[0] = _mm256_bslli_epi128(diff_cols[0], 2); 
         // Re-add inner lost 16b and offset 16b
-        diff_output = _mm256_blend_epi16(diff_output, temp, 0x01);
+        diff_cols[0] = _mm256_blend_epi16(diff_cols[0], temp, 0x01);
+
+        // Min and max
+        __m256i const_255 = _mm256_set1_epi16(255);
+        diff_cols[0] = _mm256_add_epi16(diff_cols[0], original);
+        diff_cols[0] = _mm256_min_epi16(diff_cols[0], const_255);
+        diff_cols[0] = _mm256_max_epi16(diff_cols[0], _mm256_setzero_si256());
         
         // Store output
-        _mm256_store_si256((__m256i*) output, diff_output);
+        //PRINT_M256_EPI16(diff_output);
+        _mm256_store_si256((__m256i*) output, diff_cols[0]);
 
         // Store lone 16b int
+        __m256i original_offset = _mm256_load_si256((__m256i*) offset);
         __m256i mask = _mm256_set_epi32(0, 0, 0, 0, 0, 0, 0, 0xFFFFFFFF);
-        _mm256_maskstore_epi32((int32_t*) offset, mask, offset_output);
+        offset_output = _mm256_and_si256(mask, offset_output);        
+        offset_output = _mm256_add_epi16(offset_output, original_offset);
+        _mm256_store_si256((__m256i*) offset, offset_output);
     }
 }
 
@@ -130,6 +156,7 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
 {
     unsigned long color_size = height * width;
     int16_t throwaway[16];
+    memset(&throwaway[0], 0, sizeof(throwaway));
     
     for (size_t i = 0; i < height / 16; i++)
     {
@@ -147,10 +174,10 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
                 // TODO: Fix with input
                 case 0:
                     for (size_t k = 0; k < 3; k++)
-                        shifted_output[offset+color_size*k] = shifted_input[offset+color_size*k];
-                    input.r = (byte) MAX(MIN(shifted_output[offset+color_size*0], 255), 0);
-                    input.g = (byte) MAX(MIN(shifted_output[offset+color_size*1], 255), 0);
-                    input.b = (byte) MAX(MIN(shifted_output[offset+color_size*2], 255), 0);
+                        shifted_input[offset+color_size*k] = shifted_input[offset+color_size*k];
+                    input.r = shifted_input[offset+color_size*0];
+                    input.g = shifted_input[offset+color_size*1];
+                    input.b = shifted_input[offset+color_size*2];
                     output = FindClosestColorFromPaletteDiff(input, palette);
                     shifted_output[offset+color_size*0] = output.r;
                     shifted_output[offset+color_size*1] = output.g;
@@ -158,12 +185,12 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
                     break;
                 case 1:
                     for (size_t k = 0; k < 3; k++)
-                        shifted_output[offset+16+color_size*k] = fsdither_kernel_scalar(0, 0, 0, 
-                            shifted_output[offset+color_size*k]-shifted_input[offset+color_size*k], 
+                        shifted_input[offset+16+color_size*k] = fsdither_kernel_scalar(0, 0, 0, 
+                            shifted_input[offset+color_size*k],//-shifted_output[offset+color_size*k], 
                             shifted_input[offset+16+color_size*k]);
-                    input.r = (byte) MAX(MIN(shifted_output[offset+16+color_size*0], 255), 0);
-                    input.g = (byte) MAX(MIN(shifted_output[offset+16+color_size*1], 255), 0);
-                    input.b = (byte) MAX(MIN(shifted_output[offset+16+color_size*2], 255), 0);
+                    input.r = shifted_input[offset+16+color_size*0];
+                    input.g = shifted_input[offset+16+color_size*1];
+                    input.b = shifted_input[offset+16+color_size*2];
                     output = FindClosestColorFromPaletteDiff(input, palette);
                     shifted_output[offset+16+color_size*0] = output.r;
                     shifted_output[offset+16+color_size*1] = output.g;
@@ -172,15 +199,16 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
                 case 2:
                 default:
                     for (size_t k = 0; k < 3; k++) {
-                        shifted_output[offset+32] = fsdither_kernel_scalar(0, 0, 0, 
-                            shifted_output[offset+16]-shifted_input[offset+16], shifted_input[offset+32]);
-                        shifted_output[offset+33] = fsdither_kernel_scalar(shifted_output[offset+16]-shifted_input[offset+16],
-                            0, 0, 0, shifted_input[offset+33]);
+                        shifted_input[offset+32+color_size*k] = fsdither_kernel_scalar(0, 0, 0, 
+                            shifted_input[offset+16+color_size*k],//-shifted_output[offset+16+color_size*k], 
+                            shifted_input[offset+32+color_size*k]);//+shifted_output[offset+32+color_size*k]);
+                        shifted_input[offset+33+color_size*k] = fsdither_kernel_scalar(shifted_input[offset+16+color_size*k],//-shifted_output[offset+16+color_size*k],
+                            0, 0, 0, shifted_input[offset+33+color_size*k]);
                     }
                     for (size_t k = 0; k < 1; k++) {
-                        input.r = (byte) MAX(MIN(shifted_output[offset+32+k+color_size*0], 255), 0);
-                        input.g = (byte) MAX(MIN(shifted_output[offset+32+k+color_size*1], 255), 0);
-                        input.b = (byte) MAX(MIN(shifted_output[offset+32+k+color_size*2], 255), 0);
+                        input.r = shifted_input[offset+32+k+color_size*0];
+                        input.g = shifted_input[offset+32+k+color_size*1];
+                        input.b = shifted_input[offset+32+k+color_size*2];
                         output = FindClosestColorFromPaletteDiff(input, palette);
                         shifted_output[offset+32+k+color_size*0] = output.r;
                         shifted_output[offset+32+k+color_size*1] = output.g;
@@ -195,18 +223,25 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
         {
             for (size_t k = 0; k < 3; k++)
             {
-                int16_t* offset_output = i >= (height/16-1) ? &throwaway[0] : &shifted_output[next_offset+k*color_size+j*16];
+                int16_t* offset_output = (i >= (height/16-1)) || (j < 32) ? &throwaway[0] : &shifted_input[next_offset+k*color_size+(j-32)*16];
                 fsdither_kernel_simd(&shifted_input[(j-3)*16+offset+k*color_size],
                                      &shifted_output[(j-3)*16+offset+k*color_size],
-                                     &shifted_output[j*16+offset+k*color_size], offset_output);
+                                     &shifted_input[j*16+offset+k*color_size], offset_output);
+            }
+
+            for (size_t k = 0; k < 16; k++)
+            {
+                shifted_input[j*16+offset+0*color_size+k] = MAX(MIN(shifted_input[j*16+offset+0*color_size+k], 255), 0);
+                shifted_input[j*16+offset+1*color_size+k] = MAX(MIN(shifted_input[j*16+offset+1*color_size+k], 255), 0);
+                shifted_input[j*16+offset+2*color_size+k] = MAX(MIN(shifted_input[j*16+offset+2*color_size+k], 255), 0);
             }
 
             for (size_t k = 0; k < 16; k++)
             {
                 DTPixelDiff input;
-                input.r = (byte) MAX(MIN(shifted_output[j*16+offset+0*color_size+k], 255), 0);
-                input.g = (byte) MAX(MIN(shifted_output[j*16+offset+1*color_size+k], 255), 0);
-                input.b = (byte) MAX(MIN(shifted_output[j*16+offset+2*color_size+k], 255), 0);
+                input.r = shifted_input[j*16+offset+0*color_size+k];
+                input.g = shifted_input[j*16+offset+1*color_size+k];
+                input.b = shifted_input[j*16+offset+2*color_size+k];
                 DTPixel output = FindClosestColorFromPaletteDiff(input, palette);
                 shifted_output[j*16+offset+k+color_size*0] = output.r;
                 shifted_output[j*16+offset+k+color_size*1] = output.g;
@@ -227,7 +262,7 @@ static int16_t* shift_memory(DTPixel *pixels, size_t width, size_t height,
     size_t padded_width = (height <= 16) ? width + 2*(height-1) : width + 2*(16-1);
     size_t padded_height = (height / 16) * 16 + (height % 16 > 0) * 16; 
     unsigned long color_size = padded_height * padded_width;
-    unsigned long memory_size = 3 * color_size *sizeof(int16_t);
+    unsigned long memory_size = 3 * color_size * sizeof(int16_t);
 
     int16_t* shifted_memory;
     posix_memalign((void**) &shifted_memory, 64, memory_size);
@@ -239,9 +274,8 @@ static int16_t* shift_memory(DTPixel *pixels, size_t width, size_t height,
         for (size_t j = 0; j < width; j++)
         {
             DTPixel val = pixels[i*width+j];
-            size_t shift_index = (i/16)*16*padded_width + (j+(i%16)*2)*16 + (i%16); // TODO: Fix
+            size_t shift_index = (i/16)*16*padded_width + (j+(i%16)*2)*16 + (i%16);
 
-            //printf("%ld\n", shift_index);
             shifted_memory[shift_index + 0] = val.r;
             shifted_memory[shift_index + 1*color_size] = val.g;
             shifted_memory[shift_index + 2*color_size] =  val.b;
@@ -331,3 +365,5 @@ ApplyFloydSteinbergDither(DTImage *image, DTPalettePacked *palette)
     free(shifted_memory);
     free(shifted_output);
 }
+
+
