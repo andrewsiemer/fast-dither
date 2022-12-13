@@ -138,7 +138,16 @@ __attribute__((aligned (32))) static const uint8_t rrl_shuffle_hi[16][32] = {
       15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 }
 };
 
-/** @brief Loads an XMM register with a 64-bit value */
+/**
+ * @brief Gathers 4 64-bit elements into an m256i
+ *
+ * This used to be a load into a uint64_t array and then a load from that
+ * array into an m256i, which Clang happily transformed into this chunk of
+ * code. Unfortunately, GCC is not smart enough to make that optimization.
+ * Even more unfortunately, neither GCC nor Clang are smart enough to realize
+ * that xmmN = ymmN, so we just pick some and then warn the compiler that we
+ * smashed them.
+ */
 #define GATHER64_SI256(i0, i1, i2, i3)\
 ({\
     register __m256i _ret;\
@@ -151,7 +160,7 @@ __attribute__((aligned (32))) static const uint8_t rrl_shuffle_hi[16][32] = {
         "vpunpcklqdq %%xmm2, %%xmm1, %%xmm1\n\t"\
         "vinserti128 $1,%%xmm1,%%ymm0,%0"\
         : "=x" (_ret)\
-        : "m" (i0), "m" (i1), "m" (i2), "m" (i3)\
+        : "m" (*i0), "m" (*i1), "m" (*i2), "m" (*i3)\
         : "xmm0", "xmm1", "xmm2"\
     );\
     _ret;\
@@ -294,10 +303,10 @@ AlignSubPartition32(
     // Load in the 8-element sort vector, and the shuffle vector for
     // 32-element sorting.
     tmp16_lo = GATHER64_SI256(
-        * (uint64_t*) sort1b_4x8[(am >> 0) & 0xFF],
-        * (uint64_t*) sort1b_4x8[(am >> 8) & 0xFF],
-        * (uint64_t*) sort1b_4x8[(am >> 16) & 0xFF],
-        * (uint64_t*) sort1b_4x8[(am >> 24) & 0xFF]
+        (uint64_t*) sort1b_4x8[(am >> 0) & 0xFF],
+        (uint64_t*) sort1b_4x8[(am >> 8) & 0xFF],
+        (uint64_t*) sort1b_4x8[(am >> 16) & 0xFF],
+        (uint64_t*) sort1b_4x8[(am >> 24) & 0xFF]
     );
     sort_mask = _mm256_add_epi8(sort_mask, tmp16_lo);
 
@@ -324,10 +333,10 @@ AlignSubPartition32(
         // Load in the 8-element sort vector, and the shuffle vector for
         // 32-element sorting.
         tmp16_lo = GATHER64_SI256(
-            * (uint64_t*) sort1b_4x8[(am >> 0) & 0xFF],
-            * (uint64_t*) sort1b_4x8[(am >> 8) & 0xFF],
-            * (uint64_t*) sort1b_4x8[(am >> 16) & 0xFF],
-            * (uint64_t*) sort1b_4x8[(am >> 24) & 0xFF]
+            (uint64_t*) sort1b_4x8[(am >> 0) & 0xFF],
+            (uint64_t*) sort1b_4x8[(am >> 8) & 0xFF],
+            (uint64_t*) sort1b_4x8[(am >> 16) & 0xFF],
+            (uint64_t*) sort1b_4x8[(am >> 24) & 0xFF]
         );
         sort_mask = _mm256_add_epi8(sort_mask, tmp16_lo);
 
