@@ -511,7 +511,7 @@ void
 MCTimeReport(
     mc_time_t *time
 ) {
-    const double sub_theoretical = (32.0/11.0);
+    const double sub_theoretical = (32.0/10.0);
     const double full_theoretical = (32.0/11.0);
     const double part_theoretical = (32.0/21.0);
     const double shrink_theoretical = (32.0/3.0);

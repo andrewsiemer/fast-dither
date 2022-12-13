@@ -44,6 +44,14 @@ __attribute__((aligned (32))) static const uint8_t cmp_adjust[32] = {
     128, 128, 128, 128, 128, 128, 128, 128
 };
 
+/// @brief Load mask setting the upper half of the vector.
+align(32) static const uint8_t half_mask[32] = {
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    0, 0, 0, 0, 0, 0, 0, 0
+};
+
 /**
  * @brief Shuffle vectors to sort two 8-element sorted vectors into a 16-element
  *        sorted vector.
@@ -150,18 +158,24 @@ __attribute__((aligned (32))) static const uint8_t rrl_shuffle_hi[16][32] = {
  */
 #define GATHER64_SI256(i0, i1, i2, i3)\
 ({\
-    register __m256i _ret;\
+    register __m256i _ret, _tmp;\
     __asm__ (\
-        "vmovq %1, %%xmm0\n\t"\
-        "vmovq %2, %%xmm1\n\t"\
-        "vpunpcklqdq %%xmm1, %%xmm0, %%xmm0\n\t"\
-        "vmovq %3, %%xmm1\n\t"\
-        "vmovq %4, %%xmm2\n\t"\
-        "vpunpcklqdq %%xmm2, %%xmm1, %%xmm1\n\t"\
-        "vinserti128 $1,%%xmm1,%%ymm0,%0"\
-        : "=x" (_ret)\
-        : "m" (*i0), "m" (*i1), "m" (*i2), "m" (*i3)\
-        : "xmm0", "xmm1", "xmm2"\
+        "vmovdqa %6, %%ymm0\n\t"\
+        "vpmaskmovq %4, %%ymm0, %0\n\t"\
+        "vpmaskmovq %5, %%ymm0, %1\n\t"\
+        "vmovq %2, %%xmm0\n\t"\
+        "vpor %%ymm0, %0, %0\n\t"\
+        "vmovq %3, %%xmm0\n\t"\
+        "vpor %%ymm0, %1, %1\n\t"\
+        "vpunpcklqdq %1, %0, %0"\
+        : "=x" (_ret),\
+          "=x" (_tmp)\
+        : "m" (*i0),\
+          "m" (*i1),\
+          "m" (*((i2) - 2)),\
+          "m" (*((i3) - 2)),\
+          "m" (* (__m256i*) half_mask)\
+        : "xmm0"\
     );\
     _ret;\
 })
