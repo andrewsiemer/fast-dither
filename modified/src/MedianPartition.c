@@ -227,7 +227,7 @@ AlignSubPartition32(
     register uint32_t loc, lloc, hloc, ploc, plloc, phloc, pploc;
 
     tmp1 = _mm256_load_si256((__m256i*) cmp_adjust);
-    pivots[0] = _mm256_set1_epi8(pivot);
+    pivots[0] = _mm256_set1_epi8((int8_t) pivot);
     pivots[0] = _mm256_add_epi8(tmp1, pivots[0]);
 
     a1 = _mm256_load_si256(&ch1[0]);
@@ -250,11 +250,12 @@ AlignSubPartition32(
         pa1_lo = _mm256_load_si256((__m256i*) shuffle_adjust);
         a1 = _mm256_load_si256(&ch1[1]);
         pa2_lo = _mm256_load_si256((__m256i*) cmp_adjust);
+        pa3_lo = _mm256_load_si256(&pivots[0]);
         pa2 = _mm256_load_si256(&ch2[0]);
         pa3 = _mm256_load_si256(&ch3[0]);
 
         tmp1 = _mm256_add_epi8(a1, pa2_lo);
-        tmp1 = _mm256_cmpgt_epi8(tmp1, pivots[0]);
+        tmp1 = _mm256_cmpgt_epi8(tmp1, pa3_lo);
         am = (unsigned int) _mm256_movemask_epi8(tmp1);
 
         lloc = (uint8_t) (unsigned int) __builtin_popcount(am & 0xFF);
@@ -317,12 +318,13 @@ AlignSubPartition32(
         for (size_t i = 2; i < size; i++) {
             a1 = _mm256_load_si256(&ch1[i]);
             pa2_lo = _mm256_load_si256((__m256i*) cmp_adjust);
+            pa3_lo = _mm256_load_si256(&pivots[0]);
             pa1_lo = _mm256_load_si256((__m256i*) shuffle_adjust);
             pa2 = _mm256_load_si256(&ch2[i-1]);
             pa3 = _mm256_load_si256(&ch3[i-1]);
 
             tmp1 = _mm256_add_epi8(a1, pa2_lo);
-            tmp1 = _mm256_cmpgt_epi8(tmp1, pivots[0]);
+            tmp1 = _mm256_cmpgt_epi8(tmp1, pa3_lo);
             am = (unsigned int) _mm256_movemask_epi8(tmp1);
 
             lloc = (uint8_t) (unsigned int) __builtin_popcount(am & 0xFF);

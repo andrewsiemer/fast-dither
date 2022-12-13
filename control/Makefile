@@ -59,16 +59,19 @@ endif
 
 
 # Flags which only work for clang.
+CLANG_CFLAGS = -Weverything -Wno-padded -Wno-covered-switch-default\
+               -Wno-unused-macros -Wno-gnu-statement-expression
+ANALYZER_CFLAGS = $(CFLAGS) $(CLANG_CFLAGS)
+
 ifeq ($(CC),clang)
-CFLAGS += -Weverything -Wno-padded -Wno-covered-switch-default\
-          -Wno-unused-macros -Wno-gnu-statement-expression
+CFLAGS += $(CLANG_CFLAGS)
 endif
 ifeq ($(CC),gcc)
 CFLAGS += -Wextra -Wno-strict-aliasing
 endif
 
 # Static analysis program. We just use clang.
-STATIC_ANALYSIS = $(CC) $(CFLAGS) --analyze -Xanalyzer -analyzer-output=text
+STATIC_ANALYSIS = clang $(ANALYZER_CFLAGS) --analyze -Xanalyzer -analyzer-output=text
 
 # Fix the object list by making it relative to the source code root.
 OBJECTS := $(addprefix $(SRC_ROOT)/,$(OBJECTS))
@@ -95,8 +98,9 @@ $(ASM_OBJECTS): %.o: %.S
 	$(CC) $(CFLAGS) -DASSEMBLER -c -MD -MP -MF $(@:.o=.d) -MT $@ -o $@ $(@:.o=.S)
 
 $(C_OBJECTS): %.o: %.c
-ifeq ($(CC),clang)
 	$(STATIC_ANALYSIS) $(@:.o=.c)
+ifeq ($(CC),gcc)
+	clang $(CFLAGS) $(CLANG_CFLAGS) -fsyntax-only $(@:.o=.c)
 endif
 	$(CC) $(CFLAGS) -c -MD -MP -MF $(@:.o=.d) -MT $@ -o $@ $(@:.o=.c)
 
