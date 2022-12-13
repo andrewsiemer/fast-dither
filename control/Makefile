@@ -64,7 +64,7 @@ CFLAGS += -Weverything -Wno-padded -Wno-covered-switch-default\
           -Wno-unused-macros -Wno-gnu-statement-expression
 endif
 ifeq ($(CC),gcc)
-CFLAGS += -Wextra -Wno-strict-aliasing
+CFLAGS += -Wextra -Wno-strict-aliasing -Wno-unused-result
 endif
 
 # Static analysis program. We just use clang.
