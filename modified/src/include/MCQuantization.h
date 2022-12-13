@@ -14,6 +14,7 @@
 
 #include <SplitImage.h>
 #include <DTPalette.h>
+#include <UtilMacro.h>
 
 typedef uint8_t mc_byte_t;
 typedef unsigned int mc_uint_t;
@@ -31,13 +32,22 @@ typedef struct {
     unsigned long long mc_units;
     unsigned long long align_time;
     unsigned long long align_units;
-    unsigned long long dc_time;
-    unsigned long long dc_units;
     unsigned long long sub_time;
     unsigned long long sub_units;
     unsigned long long full_time;
     unsigned long long full_units;
 } mc_time_t;
+
+/// @brief Times the given chunk of code to the given time structure.
+#define MC_TIME(t, u, c)\
+do {\
+    unsigned long long ts1, ts2;\
+    TIMESTAMP(ts1);\
+    c\
+    TIMESTAMP(ts2);\
+    t##_time += (ts2 - ts1);\
+    t##_units += u;\
+} while (0)
 
 MCWorkspace *MCWorkspaceMake(mc_byte_t level, size_t img_size);
 void MCWorkspaceDestroy(MCWorkspace *ws);
