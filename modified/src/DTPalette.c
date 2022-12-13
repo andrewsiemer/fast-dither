@@ -180,3 +180,4 @@ PaletteTimeReport(palette_time_t *time) {
 
     printf("Palette Search%11s%-20.6lf%-20.6lf%.2lf%%\n", "", search_time, search_pix, search_peak);
 }
+
