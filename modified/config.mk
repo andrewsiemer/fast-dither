@@ -17,6 +17,13 @@ OBJECTS =\
 # Binary!
 TARGET = dither
 
+# Threading? (yes/no)
+USE_OMP = no
+
+# The clang version on these machines doesn't support OpenMP. Clang took
+# forever to add support, and many features are still missing, actually.
+CC = gcc
+
 ### Build the sort look-up table for the 1-bit bitonic (4x8 byte) sort. ###
 
 sort_lut: sort_lut.c
