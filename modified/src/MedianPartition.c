@@ -44,12 +44,20 @@ __attribute__((aligned (32))) static const uint8_t cmp_adjust[32] = {
     128, 128, 128, 128, 128, 128, 128, 128
 };
 
+/// @brief Load mask setting the upper-low half of the vector.
+align(32) static const uint8_t quarter_mask[32] = {
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    0, 0, 0, 0, 0, 0, 0, 0
+};
+
 /// @brief Load mask setting the upper half of the vector.
 align(32) static const uint8_t half_mask[32] = {
     0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0,
     255, 255, 255, 255, 255, 255, 255, 255,
-    0, 0, 0, 0, 0, 0, 0, 0
+    255, 255, 255, 255, 255, 255, 255, 255
 };
 
 /**
@@ -57,12 +65,8 @@ align(32) static const uint8_t half_mask[32] = {
  *        sorted vector.
  *
  * indexed by the number of high-elements in the lower 8-element vector.
- *
- * Padded by two elements, since we unaligned load this twice to blend it
- * and create a single sorting vector.
  */
-__attribute__((aligned (16))) static const uint8_t sort1b_2x16[11][16] = {
-    { 0 },
+__attribute__((aligned (16))) static const uint8_t sort1b_2x16[9][16] = {
     { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 },
     { 0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 7 },
     { 0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15, 6, 7 },
@@ -147,11 +151,11 @@ __attribute__((aligned (32))) static const uint8_t rrl_shuffle_hi[16][32] = {
 };
 
 /**
- * @brief Gathers 4 64-bit elements into an m256i
+ * @brief Gathers 4 64-bit elements into an m256i.
  *
  * This used to be a load into a uint64_t array and then a load from that
- * array into an m256i, which Clang happily transformed into this chunk of
- * code. Unfortunately, GCC is not smart enough to make that optimization.
+ * array into an m256i, which Clang happily transformed into something like
+ * this code. Unfortunately, GCC is not smart enough to make that optimization.
  * Even more unfortunately, neither GCC nor Clang are smart enough to realize
  * that xmmN = ymmN, so we just pick some and then warn the compiler that we
  * smashed them.
@@ -174,6 +178,24 @@ __attribute__((aligned (32))) static const uint8_t rrl_shuffle_hi[16][32] = {
           "m" (*i1),\
           "m" (*((i2) - 2)),\
           "m" (*((i3) - 2)),\
+          "m" (* (__m256i*) quarter_mask)\
+        : "xmm0"\
+    );\
+    _ret;\
+})
+
+/** @brief Gathers 2 128-bit elements into an m256i. */
+#define GATHER128_SI256(i0, i1)\
+({\
+    register __m256i _ret;\
+    __asm__ (\
+        "vmovdqa %3, %0\n\t"\
+        "movdqa %1, %%xmm0\n\t"\
+        "vpmaskmovq %2, %0, %0\n\t"\
+        "vpor %%ymm0, %0, %0\n\t"\
+        : "=x" (_ret)\
+        : "m" (*i0),\
+          "m" (* (__m256i*) ((i1) - 1)),\
           "m" (* (__m256i*) half_mask)\
         : "xmm0"\
     );\
@@ -198,7 +220,7 @@ AlignSubPartition32(
     uint8_t pivot
 ) {
     register __m256i a1, pa1, pa2, pa3, adjust, pivots;
-    register __m256i sort_mask, p_sort_mask, tmp16_lo, tmp16_hi;
+    register __m256i sort_mask, p_sort_mask, tmp1, tmp2;
     register __m256i a1_lo, a2_lo, a3_lo, roll_mask;
     register uint32_t am, loc, lloc, hloc, ploc;
 
@@ -209,9 +231,9 @@ AlignSubPartition32(
     sort_mask = _mm256_load_si256((__m256i*) shuffle_adjust);
     a1 = _mm256_load_si256(&ch1[0]);
 
-    tmp16_lo = _mm256_add_epi8(a1, adjust);
-    tmp16_lo = _mm256_cmpgt_epi8(tmp16_lo, pivots);
-    am = (unsigned int) _mm256_movemask_epi8(tmp16_lo);
+    tmp1 = _mm256_add_epi8(a1, adjust);
+    tmp1 = _mm256_cmpgt_epi8(tmp1, pivots);
+    am = (unsigned int) _mm256_movemask_epi8(tmp1);
 
     lloc = (uint8_t) (unsigned int) __builtin_popcount(am & 0xFF);
     hloc = (uint8_t) (unsigned int) __builtin_popcount((am >> 16) & 0xFF);
@@ -220,24 +242,25 @@ AlignSubPartition32(
 
     // Load in the 8-element sort vector, and the shuffle vector for
     // 32-element sorting.
-    tmp16_lo = GATHER64_SI256(
+    tmp1 = GATHER64_SI256(
         (uint64_t*) sort1b_4x8[(am >> 0) & 0xFF],
         (uint64_t*) sort1b_4x8[(am >> 8) & 0xFF],
         (uint64_t*) sort1b_4x8[(am >> 16) & 0xFF],
         (uint64_t*) sort1b_4x8[(am >> 24) & 0xFF]
     );
-    sort_mask = _mm256_add_epi8(sort_mask, tmp16_lo);
+    sort_mask = _mm256_add_epi8(sort_mask, tmp1);
 
     // Load in the 16-element sort vectors pieces.
     roll_mask = _mm256_load_si256((__m256i*) rrl_shuffle_hi[loc & 0xF]);
-    tmp16_lo = _mm256_loadu_si256((__m256i*) sort1b_2x16[lloc + 1]);
-    tmp16_hi = _mm256_loadu_si256((__m256i*) sort1b_2x16[hloc]);
+    tmp1 = GATHER128_SI256(
+        (__m128i*) sort1b_2x16[lloc],
+        (__m128i*) sort1b_2x16[hloc]
+    );
 
     // Blend the 8/16 sort evcotrs together, then preroll the resulting
     // shuffle vector to create a vector that will 16-sort and pre-roll
     // the a vectors.
-    tmp16_lo = _mm256_blend_epi32(tmp16_lo, tmp16_hi, 0xF0);
-    sort_mask = _mm256_shuffle_epi8(sort_mask, tmp16_lo);
+    sort_mask = _mm256_shuffle_epi8(sort_mask, tmp1);
     sort_mask = _mm256_shuffle_epi8(sort_mask, roll_mask);
 
     // Apply the shuffle to the a vectors.
@@ -246,14 +269,15 @@ AlignSubPartition32(
     ploc = loc;
 
     for (size_t i = 1; i < size; i++) {
-        sort_mask = _mm256_load_si256((__m256i*) shuffle_adjust);
         a1 = _mm256_load_si256(&ch1[i]);
+        sort_mask = _mm256_load_si256((__m256i*) shuffle_adjust);
         pa2 = _mm256_load_si256(&ch2[i-1]);
         pa3 = _mm256_load_si256(&ch3[i-1]);
+        roll_mask = _mm256_load_si256((__m256i*) srl_blend[ploc]);
 
-        tmp16_lo = _mm256_add_epi8(a1, adjust);
-        tmp16_lo = _mm256_cmpgt_epi8(tmp16_lo, pivots);
-        am = (unsigned int) _mm256_movemask_epi8(tmp16_lo);
+        tmp1 = _mm256_add_epi8(a1, adjust);
+        tmp1 = _mm256_cmpgt_epi8(tmp1, pivots);
+        am = (unsigned int) _mm256_movemask_epi8(tmp1);
 
         lloc = (uint8_t) (unsigned int) __builtin_popcount(am & 0xFF);
         hloc = (uint8_t) (unsigned int) __builtin_popcount((am >> 16) & 0xFF);
@@ -262,30 +286,28 @@ AlignSubPartition32(
 
         // Load in the 8-element sort vector, and the shuffle vector for
         // 32-element sorting.
-        tmp16_lo = GATHER64_SI256(
+        tmp1 = GATHER64_SI256(
             (uint64_t*) sort1b_4x8[(am >> 0) & 0xFF],
             (uint64_t*) sort1b_4x8[(am >> 8) & 0xFF],
             (uint64_t*) sort1b_4x8[(am >> 16) & 0xFF],
             (uint64_t*) sort1b_4x8[(am >> 24) & 0xFF]
         );
-        sort_mask = _mm256_add_epi8(sort_mask, tmp16_lo);
+        sort_mask = _mm256_add_epi8(sort_mask, tmp1);
 
         // Load in the 16-element sort vectors pieces.
-        roll_mask = _mm256_load_si256((__m256i*) rrl_shuffle_hi[loc & 0xF]);
-        tmp16_lo = _mm256_loadu_si256((__m256i*) sort1b_2x16[lloc + 1]);
-        tmp16_hi = _mm256_loadu_si256((__m256i*) sort1b_2x16[hloc]);
+        tmp1 = GATHER128_SI256(
+            (__m128i*) sort1b_2x16[lloc],
+            (__m128i*) sort1b_2x16[hloc]
+        );
+        tmp2 = _mm256_load_si256((__m256i*) rrl_shuffle_hi[loc & 0xF]);
 
         // Blend the 8/16 sort evcotrs together, then preroll the resulting
         // shuffle vector to create a vector that will 16-sort and pre-roll
         // the a vectors.
-        tmp16_lo = _mm256_blend_epi32(tmp16_lo, tmp16_hi, 0xF0);
-        sort_mask = _mm256_shuffle_epi8(sort_mask, tmp16_lo);
-        sort_mask = _mm256_shuffle_epi8(sort_mask, roll_mask);
+        sort_mask = _mm256_shuffle_epi8(sort_mask, tmp1);
+        sort_mask = _mm256_shuffle_epi8(sort_mask, tmp2);
 
         /******** ITERATION SPLIT ********/
-
-        // Get the mask used to blend the a vectors.
-        roll_mask = _mm256_load_si256((__m256i*) srl_blend[ploc]);
 
         // Apply the shuffle to the a vectors.
         pa1 = _mm256_shuffle_epi8(pa1, p_sort_mask);
