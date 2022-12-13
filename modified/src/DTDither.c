@@ -14,6 +14,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 
 /*
 void PRINT_M256_EPI16(__m256i input)
@@ -40,7 +41,6 @@ static int16_t fsdither_kernel_scalar(int16_t diff_3, int16_t diff_2, int16_t di
     diff_0 = diff_0 * 7 / 16;
     return original + (diff_3 + diff_2 + diff_1 + diff_0);
 }
-
 
 /**
  * 
@@ -152,11 +152,10 @@ static void fsdither_kernel_simd(int16_t *input, // Array A
  * 
  */
 static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, size_t width, size_t height,
-                     DTPalettePacked *palette)
+                     DTPalettePacked *palette, dt_time_t* time)
 {
     unsigned long color_size = height * width;
-    int16_t throwaway[16];
-    memset(&throwaway[0], 0, sizeof(throwaway));
+    __attribute__((aligned(32))) int16_t throwaway[16];
     
     for (size_t i = 0; i < height / 16; i++)
     {
@@ -186,7 +185,7 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
                 case 1:
                     for (size_t k = 0; k < 3; k++)
                         shifted_input[offset+16+color_size*k] = fsdither_kernel_scalar(0, 0, 0, 
-                            shifted_input[offset+color_size*k],//-shifted_output[offset+color_size*k], 
+                            shifted_input[offset+color_size*k],
                             shifted_input[offset+16+color_size*k]);
                     input.r = shifted_input[offset+16+color_size*0];
                     input.g = shifted_input[offset+16+color_size*1];
@@ -200,12 +199,12 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
                 default:
                     for (size_t k = 0; k < 3; k++) {
                         shifted_input[offset+32+color_size*k] = fsdither_kernel_scalar(0, 0, 0, 
-                            shifted_input[offset+16+color_size*k],//-shifted_output[offset+16+color_size*k], 
-                            shifted_input[offset+32+color_size*k]);//+shifted_output[offset+32+color_size*k]);
-                        shifted_input[offset+33+color_size*k] = fsdither_kernel_scalar(shifted_input[offset+16+color_size*k],//-shifted_output[offset+16+color_size*k],
+                            shifted_input[offset+16+color_size*k],
+                            shifted_input[offset+32+color_size*k]);
+                        shifted_input[offset+33+color_size*k] = fsdither_kernel_scalar(shifted_input[offset+16+color_size*k],
                             0, 0, 0, shifted_input[offset+33+color_size*k]);
                     }
-                    for (size_t k = 0; k < 1; k++) {
+                    for (size_t k = 0; k < 2; k++) {
                         input.r = shifted_input[offset+32+k+color_size*0];
                         input.g = shifted_input[offset+32+k+color_size*1];
                         input.b = shifted_input[offset+32+k+color_size*2];
@@ -223,11 +222,16 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
         {
             for (size_t k = 0; k < 3; k++)
             {
+                unsigned long long ts1, ts2;
                 int16_t* offset_output = (i >= (height/16-1)) || (j < 32) ? &throwaway[0] : &shifted_input[next_offset+k*color_size+(j-32)*16];
+                TIMESTAMP(ts1);
                 fsdither_kernel_simd(&shifted_input[(j-3)*16+offset+k*color_size],
                                      &shifted_output[(j-3)*16+offset+k*color_size],
                                      &shifted_input[j*16+offset+k*color_size], offset_output);
+                TIMESTAMP(ts2);
+                time->dither_time += (ts2 - ts1);
             }
+            time->dither_units += 16;
 
             for (size_t k = 0; k < 16; k++)
             {
@@ -251,14 +255,16 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
     }
 }
 
-
 /**
  * 
  * 
  */
 static int16_t* shift_memory(DTPixel *pixels, size_t width, size_t height,
-                        size_t *new_width, size_t *new_height)
+                        size_t *new_width, size_t *new_height, dt_time_t *time)
 {
+    unsigned long long ts1, ts2;
+    TIMESTAMP(ts1);
+
     size_t padded_width = (height <= 16) ? width + 2*(height-1) : width + 2*(16-1);
     size_t padded_height = (height / 16) * 16 + (height % 16 > 0) * 16; 
     unsigned long color_size = padded_height * padded_width;
@@ -284,16 +290,23 @@ static int16_t* shift_memory(DTPixel *pixels, size_t width, size_t height,
 
     *new_width = padded_width;
     *new_height = padded_height;
+
+    TIMESTAMP(ts2);
+    time->shift_time += (ts2 - ts1);
+    time->shift_units += color_size;
+
     return shifted_memory;
 }
-
 
 /**
  * 
  */
 static void deshift_memory(DTPixel *pixels, int16_t* shifted, size_t width, size_t height,
-                        size_t padded_width, size_t padded_height)
+                        size_t padded_width, size_t padded_height, dt_time_t *time)
 {
+    unsigned long long ts1, ts2;
+    TIMESTAMP(ts1);
+
     unsigned long color_size = padded_height * padded_width;
 
     for (size_t i = 0; i < height; i++)
@@ -306,6 +319,10 @@ static void deshift_memory(DTPixel *pixels, int16_t* shifted, size_t width, size
             pixels[i*width+j].b = shifted[shift_index + 2*color_size];
         }
     }
+
+    TIMESTAMP(ts2);
+    time->deshift_time += (ts2 - ts1);
+    time->deshift_units += color_size;
 }
 
 /*
@@ -347,23 +364,72 @@ int main()
 }
 */
 
+/*
+static void
+DTTimeAdd(
+    dt_time_t *dst,
+    dt_time_t *src
+) {
+    dst->shift_time += src->shift_time;
+    dst->shift_units += src->shift_units;
+    dst->dither_time += src->dither_time;
+    dst->dither_units += src->dither_units;
+    dst->deshift_time += src->deshift_time;
+    dst->deshift_units += src->deshift_units;
+}
+*/
+
+void DTTimeInit(dt_time_t *time)
+{
+    assert(time);
+    *time = (dt_time_t) {0};
+}
+
+void DTTimeReport(dt_time_t *time)
+{
+    const double shift_theoretical = (2*16.0/3.0);
+    const double dither_theoretical = (2.0/3.0);
+    const double deshift_theoretical = (2*16.0/3.0);
+
+    double shift_time = TIME_NORM(0, time->shift_time);
+    double shift_pix = ((double)time->shift_units) / shift_time;
+    double shift_peak = (shift_pix / shift_theoretical) * 100;
+
+    double dither_time = TIME_NORM(0, time->dither_time);
+    double dither_pix = ((double)time->dither_units) / dither_time;
+    double dither_peak = (dither_pix / dither_theoretical) * 100;
+
+    double deshift_time = TIME_NORM(0, time->deshift_time);
+    double deshift_pix = ((double)time->deshift_units) / deshift_time;
+    double deshift_peak = (deshift_pix / deshift_theoretical) * 100;
+
+    printf("Shift%20s%-20.6lf%-20.6lf%.2lf%%\n", "", shift_time, shift_pix, shift_peak);
+    printf("Dither%19s%-20.6lf%-20.6lf%.2lf%%\n", "", dither_time, dither_pix, dither_peak);
+    printf("Deshift%18s%-20.6lf%-20.6lf%.2lf%%\n", "", deshift_time, deshift_pix, deshift_peak);
+}
+
 void
 ApplyFloydSteinbergDither(DTImage *image, DTPalettePacked *palette)
 {
+    dt_time_t t;
+    DTTimeInit(&t);
+
     size_t shifted_width;
     size_t shifted_height;
     int16_t *shifted_memory = shift_memory(image->pixels, image->width, image->height,
-                                            &shifted_width, &shifted_height);
+                                            &shifted_width, &shifted_height, &t);
     
     int16_t *shifted_output;
     posix_memalign((void**) &shifted_output, 64, 3*shifted_width*shifted_height*sizeof(int16_t));
     memset(shifted_output, 0, 3*shifted_width*shifted_height*sizeof(int16_t));
 
-    fsdither_runner(shifted_memory, shifted_output, shifted_width, shifted_height, palette);
+    fsdither_runner(shifted_memory, shifted_output, shifted_width, shifted_height, palette, &t);
     deshift_memory(image->pixels, shifted_output, image->width, image->height,
-                                             shifted_width, shifted_height);
+                                             shifted_width, shifted_height, &t);
     free(shifted_memory);
     free(shifted_output);
+
+    DTTimeReport(&t);
 }
 
 
