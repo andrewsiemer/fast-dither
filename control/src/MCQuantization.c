@@ -31,13 +31,10 @@ struct mc_workspace_t {
     MCTriplet *palette;
 };
 
-unsigned long long shrink_pixels;
-unsigned long long shrink_cycles;
-
 /* dimension comparison priority least -> greatest */
 static size_t dimOrder[NUM_DIM];
 
-void MCShrinkCube(MCCube *cube);
+void MCShrinkCube(MCCube *cube, mc_time_t *time);
 MCTriplet MCCubeAverage(MCCube *cube);
 void MCCalculateBiggestDimension(MCCube *cube);
 int MCCompareTriplet(const void *t1, const void *t2);
@@ -73,12 +70,15 @@ MCWorkspaceDestroy(MCWorkspace *ws)
 }
 
 MCTriplet *
-MCQuantizeData(MCTriplet *data, size_t size, MCWorkspace *ws)
+MCQuantizeData(MCTriplet *data, size_t size, MCWorkspace *ws, mc_time_t *time)
 {
+    unsigned long long mc_ts1, mc_ts2;
+    TIMESTAMP(mc_ts1);
+
     /* first cube */
     ws->cubes[0].data = data;
     ws->cubes[0].size = size;
-    MCShrinkCube(ws->cubes);
+    MCShrinkCube(ws->cubes, time);
 
     /* remaining cubes */
     size_t parentIndex = 0;
@@ -96,7 +96,8 @@ MCQuantizeData(MCTriplet *data, size_t size, MCWorkspace *ws)
         qsort(parentCube->data, parentCube->size,
                 sizeof(MCTriplet), MCCompareTriplet);
         TIMESTAMP(ts2);
-        TIME_REPORT("Median Partition", ts1, ts2);
+        time->sort_time += (ts2 - ts1);
+        time->sort_units += parentCube->size;
 
         /* Get median location */
         size_t mid = parentCube->size >> 1;
@@ -112,8 +113,8 @@ MCQuantizeData(MCTriplet *data, size_t size, MCWorkspace *ws)
         ws->cubes[parentIndex+offset].size -= mid + 1;
 
         /* shrink new cubes */
-        MCShrinkCube(&ws->cubes[parentIndex]);
-        MCShrinkCube(&ws->cubes[parentIndex+offset]);
+        MCShrinkCube(&ws->cubes[parentIndex], time);
+        MCShrinkCube(&ws->cubes[parentIndex+offset], time);
 
         /* check if iLevel must be increased by analysing if the next
          * offset is within palette size boundary. If not, change level
@@ -132,23 +133,26 @@ MCQuantizeData(MCTriplet *data, size_t size, MCWorkspace *ws)
 
     MCTriplet *ret = ws->palette;
     ws->palette = NULL;
+
+    TIMESTAMP(mc_ts2);
+    time->mc_time += (mc_ts2 - mc_ts1);
+    time->mc_units += size;
     return ret;
 }
 
 void
-MCShrinkCube(MCCube *cube)
+MCShrinkCube(MCCube *cube, mc_time_t *time)
 {
     mc_byte_t r, g, b;
     MCTriplet *data;
+    unsigned long long t1, t2;
+    TIMESTAMP(t1);
 
     data = cube->data;
 
     cube->min = MCTripletMake(0xFF, 0xFF, 0xFF);
     cube->max = MCTripletMake(0x00, 0x00, 0x00);
 
-    shrink_pixels += cube->size;
-    unsigned long long t1, t2;
-    TIMESTAMP(t1);
     for (size_t i = 0; i < cube->size; i++) {
         r = data[i].value[0];
         g = data[i].value[1];
@@ -162,8 +166,10 @@ MCShrinkCube(MCCube *cube)
         if (g > cube->max.value[1]) cube->max.value[1] = g;
         if (b > cube->max.value[2]) cube->max.value[2] = b;
     }
+
     TIMESTAMP(t2);
-    shrink_cycles += (t2 - t1);
+    time->shrink_time += (t2 - t1);
+    time->shrink_units += cube->size;
 }
 
 MCTriplet
@@ -210,4 +216,35 @@ MCCompareTriplet(const void *a, const void *b)
         | t2.value[dimOrder[2]] << 16u;
 
     return lhs - rhs;
+}
+
+void
+MCTimeInit(
+    mc_time_t *time
+) {
+    *time = (mc_time_t) { .sort_time = 0, .shrink_time = 0 };
+}
+
+void
+MCTimeReport(
+    mc_time_t *time
+) {
+    const double part_theoretical = (32.0/21.0);
+    const double shrink_theoretical = (32.0/3.0);
+
+    double mc_time = TIME_NORM(0, time->mc_time);
+    double mc_pix = ((double)time->mc_units) / mc_time;
+
+    double sort_time = TIME_NORM(0, time->sort_time);
+    double sort_pix = ((double)time->sort_units) / sort_time;
+    double sort_peak = (sort_pix / part_theoretical) * 100;
+
+    double shrink_time = TIME_NORM(0, time->shrink_time);
+    double shrink_pix = ((double)time->shrink_units) / shrink_time;
+    double shrink_peak = (shrink_pix / shrink_theoretical) * 100;
+
+    printf("Kernel%14sCycles%14sPix/cyc%13s%%Peak\n", "", "", "");
+    printf("MCQuantization%6s%-20.6lf%-20.6lf--\n", "", mc_time, mc_pix);
+    printf("QSort%15s%-20.6lf%-20.6lf%.2lf%%\n", "", sort_time, sort_pix, sort_peak);
+    printf("Shrink%14s%-20.6lf%-20.6lf%.2lf%%\n", "", shrink_time, shrink_pix, shrink_peak);
 }

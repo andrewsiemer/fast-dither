@@ -38,4 +38,7 @@ do {\
     printf("%s: %lf,\n", s,\
         (ts2 - ts1) * (MAX_FREQ/BASE_FREQ))
 
+// Normalizes a time difference against frequency.
+#define TIME_NORM(ts1, ts2) (((ts2) - (ts1)) / (MAX_FREQ/BASE_FREQ))
+
 #endif /* __UTIL_MACRO_H__ */
