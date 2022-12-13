@@ -92,9 +92,9 @@ static void fsdither_kernel_simd(int16_t *input, // Array A
             // Create temp with swap lanes
             temp = _mm256_permute2x128_si256(wake_diff, wake_diff, 0x81); 
             // Left-shift temp all the way to the other side of the lane
-            temp = _mm256_bslli_epi128(temp, 16-2); 
+            temp = _mm256_slli_si256(temp, 16-2); 
             // Pop top 16b from both lanes
-            wake_diff = _mm256_bsrli_epi128(wake_diff, 2); 
+            wake_diff = _mm256_srli_si256(wake_diff, 2); 
             // Re-add inner lost 16b
             wake_diff = _mm256_blend_epi16(wake_diff, temp, 0x80); 
         }
@@ -119,13 +119,13 @@ static void fsdither_kernel_simd(int16_t *input, // Array A
     {
         // Finish shift
         // Left-shift temp all the way to the other side of the lane
-        __m256i offset_output = _mm256_bsrli_epi128(diff_cols[0], 16-2); 
+        __m256i offset_output = _mm256_srli_si256(diff_cols[0], 16-2); 
         // Create temp with swap lanes
         __m256i temp = _mm256_permute2x128_si256(offset_output, diff_offset, 0x02); 
         offset_output = _mm256_permute2x128_si256(offset_output, offset_output, 0x01);
 
         // Pop top 16b from both lanes
-        diff_cols[0] = _mm256_bslli_epi128(diff_cols[0], 2); 
+        diff_cols[0] = _mm256_slli_si256(diff_cols[0], 2); 
         // Re-add inner lost 16b and offset 16b
         diff_cols[0] = _mm256_blend_epi16(diff_cols[0], temp, 0x01);
 
