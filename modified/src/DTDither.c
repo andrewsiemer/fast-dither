@@ -170,32 +170,31 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
             DTPixel output;
             switch (j)
             {
-                // TODO: Fix with input
-                case 0:
+                case 0: // Column 0
                     for (size_t k = 0; k < 3; k++)
                         shifted_input[offset+color_size*k] = shifted_input[offset+color_size*k];
-                    input.r = shifted_input[offset+color_size*0];
-                    input.g = shifted_input[offset+color_size*1];
-                    input.b = shifted_input[offset+color_size*2];
+                    input.r = MAX(MIN(shifted_input[offset+color_size*0], 255), 0);
+                    input.g = MAX(MIN(shifted_input[offset+color_size*1], 255), 0);
+                    input.b = MAX(MIN(shifted_input[offset+color_size*2], 255), 0);
                     output = FindClosestColorFromPaletteDiff(input, palette);
                     shifted_output[offset+color_size*0] = output.r;
                     shifted_output[offset+color_size*1] = output.g;
                     shifted_output[offset+color_size*2] = output.b;
                     break;
-                case 1:
+                case 1: // Column 1
                     for (size_t k = 0; k < 3; k++)
                         shifted_input[offset+16+color_size*k] = fsdither_kernel_scalar(0, 0, 0, 
                             shifted_input[offset+color_size*k],
                             shifted_input[offset+16+color_size*k]);
-                    input.r = shifted_input[offset+16+color_size*0];
-                    input.g = shifted_input[offset+16+color_size*1];
-                    input.b = shifted_input[offset+16+color_size*2];
+                    input.r = MAX(MIN(shifted_input[offset+16+color_size*0], 255), 0);
+                    input.g = MAX(MIN(shifted_input[offset+16+color_size*1], 255), 0);
+                    input.b = MAX(MIN(shifted_input[offset+16+color_size*2], 255), 0);
                     output = FindClosestColorFromPaletteDiff(input, palette);
                     shifted_output[offset+16+color_size*0] = output.r;
                     shifted_output[offset+16+color_size*1] = output.g;
                     shifted_output[offset+16+color_size*2] = output.b;
                     break;
-                case 2:
+                case 2: // Column 2
                 default:
                     for (size_t k = 0; k < 3; k++) {
                         shifted_input[offset+32+color_size*k] = fsdither_kernel_scalar(0, 0, 0, 
@@ -205,9 +204,9 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
                             0, 0, 0, shifted_input[offset+33+color_size*k]);
                     }
                     for (size_t k = 0; k < 2; k++) {
-                        input.r = shifted_input[offset+32+k+color_size*0];
-                        input.g = shifted_input[offset+32+k+color_size*1];
-                        input.b = shifted_input[offset+32+k+color_size*2];
+                        input.r = MAX(MIN(shifted_input[offset+32+k+color_size*0], 255), 0);
+                        input.g = MAX(MIN(shifted_input[offset+32+k+color_size*1], 255), 0);
+                        input.b = MAX(MIN(shifted_input[offset+32+k+color_size*2], 255), 0);
                         output = FindClosestColorFromPaletteDiff(input, palette);
                         shifted_output[offset+32+k+color_size*0] = output.r;
                         shifted_output[offset+32+k+color_size*1] = output.g;
@@ -232,13 +231,6 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
                 time->dither_time += (ts2 - ts1);
             }
             time->dither_units += 16;
-
-            for (size_t k = 0; k < 16; k++)
-            {
-                shifted_input[j*16+offset+0*color_size+k] = MAX(MIN(shifted_input[j*16+offset+0*color_size+k], 255), 0);
-                shifted_input[j*16+offset+1*color_size+k] = MAX(MIN(shifted_input[j*16+offset+1*color_size+k], 255), 0);
-                shifted_input[j*16+offset+2*color_size+k] = MAX(MIN(shifted_input[j*16+offset+2*color_size+k], 255), 0);
-            }
 
             for (size_t k = 0; k < 16; k++)
             {
@@ -326,45 +318,6 @@ static void deshift_memory(DTPixel *pixels, int16_t* shifted, size_t width, size
 }
 
 /*
-int main()
-{
-    int16_t *original;
-    int16_t *palette;
-    int16_t *offset;
-
-    posix_memalign((void**) &original, 64, 3 * 16 * sizeof(int16_t));
-    posix_memalign((void**) &palette, 64, 4 * 16 * sizeof(int16_t));
-    posix_memalign((void**) &offset, 64, 1 * 16 * sizeof(int16_t));
-
-    for (size_t i = 0; i < 16*3; i++)
-        original[i] = i;
-    for (size_t i = 0; i < 16*4; i++)
-        palette[i] = 0;
-    for (size_t i = 0; i < 16; i++)
-        offset[i] = 0;
-
-    unsigned long long ts1, ts2;
-    unsigned long total = 0;
-    for (int runs = 0; runs != 100; runs++)
-    {
-        TIMESTAMP(ts1);
-        for (int i = 0; i != 1; i++)
-            fsdither_kernel_simd(&original[16*i], &palette[16*i], &palette[16*(3+i)], &offset[0]);
-        TIMESTAMP(ts2);
-        total += (ts2-ts1);
-    }
-    TIME_REPORT("Dither", 0, total);
-
-    for (size_t i = 0; i < 16; i++)
-        printf("%d ", palette[16*3+i]);
-    printf("\n");
-    for (size_t i = 0; i < 16; i++)
-        printf("%d ", offset[i]);
-    printf("\n");
-}
-*/
-
-/*
 static void
 DTTimeAdd(
     dt_time_t *dst,
@@ -388,7 +341,7 @@ void DTTimeInit(dt_time_t *time)
 void DTTimeReport(dt_time_t *time)
 {
     const double shift_theoretical = (2*16.0/3.0);
-    const double dither_theoretical = (2.0/3.0);
+    const double dither_theoretical = (1/1.3125);
     const double deshift_theoretical = (2*16.0/3.0);
 
     double shift_time = TIME_NORM(0, time->shift_time);
