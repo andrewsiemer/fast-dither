@@ -22,9 +22,17 @@ typedef struct {
     int *colors;
 } DTPalettePacked;
 
+typedef struct {
+    unsigned long long search_time;
+    unsigned long long search_units;
+} palette_time_t;
+
 DTPalettePacked *StandardPaletteBW(size_t size);
 DTPalettePacked *StandardPaletteRGB(void);
 
-DTPixel FindClosestColorFromPalette(DTPixel pixel, DTPalettePacked *palette);
+DTPixel FindClosestColorFromPalette(DTPixel pixel, DTPalettePacked *palette, palette_time_t *time);
+
+void PaletteTimeInit(palette_time_t *time);
+void PaletteTimeReport(palette_time_t *time);
 
 #endif
