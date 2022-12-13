@@ -198,15 +198,11 @@ QuantizedPaletteForImage(DTImage *image, size_t size)
 
     colors = MCQuantizeData(data, image->resolution, ws, &mc_time);
 
-    printf("Palette = { ");
     for (size_t i = 0; i < size; i++) {
         palette->colors[i].r = colors[i].value[0];
         palette->colors[i].g = colors[i].value[1];
         palette->colors[i].b = colors[i].value[2];
-        if (i > 0) { printf(", "); }
-        printf("(%u,%u,%u)", colors[i].value[0], colors[i].value[1], colors[i].value[2]);
     }
-    printf("}\n");
 
     MCTimeReport(&mc_time);
 
