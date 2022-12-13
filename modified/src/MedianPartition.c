@@ -343,7 +343,7 @@ static float
 commit_crime(
     uint8_t b
 ) {
-    union { float f; uint8_t c[4]; } crime = { .c = { b, b, b, b} };
+    union { float f; uint8_t c[4]; } crime = { .c = { b, b, b, b } };
     return crime.f;
 }
 
@@ -556,18 +556,18 @@ AlignFullPartition(
 ) {
     register __m256i a1, a2, a3, b1, b2, b3;
     register uint32_t ac, bc;
-    size_t lo = 0, hi = size - 1, i = 0;
+    size_t lo = 0, hi = size - 1, next = size - 1;
 
-    // Partition half of the array, and store the rest in scratch space.
-    for (; i < (size >> 1); i++) {
-        a1 = _mm256_load_si256(&ch1[i]);
-        a2 = _mm256_load_si256(&ch2[i]);
-        a3 = _mm256_load_si256(&ch3[i]);
-        b1 = _mm256_load_si256(&ch1[size - i - 1]);
-        b2 = _mm256_load_si256(&ch2[size - i - 1]);
-        b3 = _mm256_load_si256(&ch3[size - i - 1]);
-        ac = ws->counts[i];
-        bc = ws->counts[size - i - 1];
+    a1 = _mm256_load_si256(&ch1[0]);
+    a2 = _mm256_load_si256(&ch2[0]);
+    a3 = _mm256_load_si256(&ch3[0]);
+    ac = ws->counts[0];
+
+    while (lo < hi) {
+        b1 = _mm256_load_si256(&ch1[next]);
+        b2 = _mm256_load_si256(&ch2[next]);
+        b3 = _mm256_load_si256(&ch3[next]);
+        bc = ws->counts[next];
 
         // Sort across both chunks.
         ARGMSORT2X32(ac, a1, a2, a3, bc, b1, b2, b3);
@@ -575,98 +575,27 @@ AlignFullPartition(
         // Determine which side is full. If ac is zero, then the a vectors are
         // low values and should be stored. Otherwise, the b vectors are all
         // high values and should be stored.
-        bool store_a = (ac == 0);
-        __m256i *a1_addr =  store_a ? &ch1[lo] : &ws->s1[i];
-        __m256i *a2_addr =  store_a ? &ch2[lo] : &ws->s2[i];
-        __m256i *a3_addr =  store_a ? &ch3[lo] : &ws->s3[i];
-        __m256i *b1_addr = !store_a ? &ch1[hi] : &ws->s1[i];
-        __m256i *b2_addr = !store_a ? &ch2[hi] : &ws->s2[i];
-        __m256i *b3_addr = !store_a ? &ch3[hi] : &ws->s3[i];
-
-        _mm256_store_si256(a1_addr, a1);
-        _mm256_store_si256(a2_addr, a2);
-        _mm256_store_si256(a3_addr, a3);
-        _mm256_store_si256(b1_addr, b1);
-        _mm256_store_si256(b2_addr, b2);
-        _mm256_store_si256(b3_addr, b3);
-
-        lo += store_a;
-        hi -= !store_a;
-        ws->counts[i] = store_a ? bc : ac;
-    }
-
-    // If there was a leftover portion, move it to scratch space.
-    if (size & 1) {
-        // Count is already in place.
-        a1 = _mm256_load_si256(&ch1[i]);
-        a2 = _mm256_load_si256(&ch2[i]);
-        a3 = _mm256_load_si256(&ch3[i]);
-        _mm256_store_si256(&ws->s1[i], a1);
-        _mm256_store_si256(&ws->s2[i], a2);
-        _mm256_store_si256(&ws->s3[i], a3);
-    }
-
-    // Partition the rest of the array using the scratch space.
-    size_t ssize = (size / 2) + (size & 1);
-    for (; ssize > 1; ssize = (ssize >> 1) + (ssize & 1)) {
-        for (i = 0; i < (ssize & ~(1ull)); i += 2) {
-            a1 = _mm256_load_si256(&ws->s1[i]);
-            a2 = _mm256_load_si256(&ws->s2[i]);
-            a3 = _mm256_load_si256(&ws->s3[i]);
-            b1 = _mm256_load_si256(&ws->s1[i + 1]);
-            b2 = _mm256_load_si256(&ws->s2[i + 1]);
-            b3 = _mm256_load_si256(&ws->s3[i + 1]);
-            ac = ws->counts[i];
-            bc = ws->counts[i + 1];
-
-            // Sort across both chunks.
-            ARGMSORT2X32(ac, a1, a2, a3, bc, b1, b2, b3);
-
-            // Determine which side is full. If ac is zero, then the a vectors
-            // are low values and should be stored. Otherwise, the b vectors
-            // are all high values and should be stored.
-            bool store_a = (ac == 0);
-            __m256i *a1_addr =  store_a ? &ch1[lo] : &ws->s1[i >> 1];
-            __m256i *a2_addr =  store_a ? &ch2[lo] : &ws->s2[i >> 1];
-            __m256i *a3_addr =  store_a ? &ch3[lo] : &ws->s3[i >> 1];
-            __m256i *b1_addr = !store_a ? &ch1[hi] : &ws->s1[i >> 1];
-            __m256i *b2_addr = !store_a ? &ch2[hi] : &ws->s2[i >> 1];
-            __m256i *b3_addr = !store_a ? &ch3[hi] : &ws->s3[i >> 1];
-
-            _mm256_store_si256(a1_addr, a1);
-            _mm256_store_si256(a2_addr, a2);
-            _mm256_store_si256(a3_addr, a3);
-            _mm256_store_si256(b1_addr, b1);
-            _mm256_store_si256(b2_addr, b2);
-            _mm256_store_si256(b3_addr, b3);
-
-            lo += store_a;
-            hi -= !store_a;
-            ws->counts[i >> 1] = store_a ? bc : ac;
-        }
-        if (ssize & 1) {
-            a1 = _mm256_load_si256(&ws->s1[i]);
-            a2 = _mm256_load_si256(&ws->s2[i]);
-            a3 = _mm256_load_si256(&ws->s3[i]);
-            ac = ws->counts[i];
-            _mm256_store_si256(&ws->s1[i >> 1], a1);
-            _mm256_store_si256(&ws->s2[i >> 1], a2);
-            _mm256_store_si256(&ws->s3[i >> 1], a3);
-            ws->counts[i >> 1] = ac;
+        if (ac == 0) {
+            _mm256_store_si256(&ch1[lo], a1);
+            _mm256_store_si256(&ch2[lo], a2);
+            _mm256_store_si256(&ch3[lo], a3);
+            a1 = b1;
+            a2 = b2;
+            a3 = b3;
+            ac = bc;
+            next = ++lo;
+        } else {
+            _mm256_store_si256(&ch1[hi], b1);
+            _mm256_store_si256(&ch2[hi], b2);
+            _mm256_store_si256(&ch3[hi], b3);
+            next = --hi;
         }
     }
 
-    assert(lo == hi);
-
-    // Store the leftover vector.
-    a1 = _mm256_load_si256(&ws->s1[0]);
-    a2 = _mm256_load_si256(&ws->s2[0]);
-    a3 = _mm256_load_si256(&ws->s3[0]);
     _mm256_store_si256(&ch1[lo], a1);
     _mm256_store_si256(&ch2[lo], a2);
     _mm256_store_si256(&ch3[lo], a3);
 
-    // Return the index.
     return lo;
 }
 
@@ -988,10 +917,8 @@ MPWorkspaceInit(
 ) {
     assert(ws);
     assert(size > 0);
-    ws->s1 = XMemalign(32, ((size / 32) / 2) * sizeof(__m256i));
-    ws->s2 = XMemalign(32, ((size / 32) / 2) * sizeof(__m256i));
-    ws->s3 = XMemalign(32, ((size / 32) / 2) * sizeof(__m256i));
-    ws->counts = XMalloc((size / 32) * sizeof(uint32_t));
+    ws->counts = XMalloc((size / 32) * 2 * sizeof(uint32_t));
+    //ws->counts = XMalloc(size * sizeof(uint32_t));
 }
 
 void
@@ -999,8 +926,5 @@ MPWorkspaceDestroy(
     mp_workspace_t *ws
 ) {
     assert(ws);
-    XFree(ws->s1);
-    XFree(ws->s2);
-    XFree(ws->s3);
     XFree(ws->counts);
 }

@@ -371,6 +371,27 @@ MCCubeAverage(
 }
 
 static void
+MCTimeAdd(
+    mc_time_t *dst,
+    mc_time_t *src
+) {
+    dst->shrink_time += src->shrink_time;
+    dst->shrink_units += src->shrink_units;
+    dst->part_time += src->part_time;
+    dst->part_units += src->part_units;
+    dst->mid_time += src->mid_time;
+    dst->mid_units += src->mid_units;
+    dst->mc_time += src->mc_time;
+    dst->mc_units += src->mc_units;
+    dst->align_time += src->align_time;
+    dst->align_units += src->align_units;
+    dst->sub_time += src->sub_time;
+    dst->sub_units += src->sub_units;
+    dst->full_time += src->full_time;
+    dst->full_units += src->full_units;
+}
+
+static void
 MCQuantizeNext(
     MCCube *cubes,
     size_t size,
@@ -380,12 +401,35 @@ MCQuantizeNext(
 ) {
     if (level == 0) { return; }
 
+    mc_time_t t1, t2;
+    MCTimeInit(&t1);
+    MCTimeInit(&t2);
     size_t offset = size >> 1;
     MCSplit(&cubes[0], &cubes[offset], ws, time);
-    MCShrinkCube(&cubes[0], time);
-    MCShrinkCube(&cubes[offset], time);
-    MCQuantizeNext(&cubes[0], offset, level - 1, ws, time);
-    MCQuantizeNext(&cubes[offset], size - offset, level - 1, ws, time);
+    #pragma omp parallel sections
+    {
+        #pragma omp section
+        {
+            mp_workspace_t local_ws = {
+                .counts = &ws->counts[0]
+            };
+
+            MCShrinkCube(&cubes[0], &t1);
+            MCQuantizeNext(&cubes[0], offset, level - 1, &local_ws, &t1);
+        }
+        #pragma omp section
+        {
+            mp_workspace_t local_ws = {
+                .counts = &ws->counts[(cubes[offset].size / 32)]
+            };
+
+            MCShrinkCube(&cubes[offset], &t2);
+            MCQuantizeNext(&cubes[offset], size - offset, level - 1, &local_ws, &t2);
+        }
+    }
+
+    MCTimeAdd(time, &t1);
+    MCTimeAdd(time, &t2);
 }
 
 DTPalette *
@@ -443,14 +487,15 @@ MCTimeReport(
     const double sub_theoretical = (32.0/11.0);
     const double full_theoretical = (32.0/11.0);
     const double part_theoretical = (32.0/21.0);
-    //const double part_theoretical = (32.0/22.0);
     const double shrink_theoretical = (32.0/3.0);
 
     double mc_time = TIME_NORM(0, time->mc_time);
     double mc_pix = ((double)time->mc_units) / mc_time;
+    double mc_peak = (((((double)time->part_units) / part_theoretical) + (((double)time->shrink_units) / shrink_theoretical)) / mc_time) * 100;
 
     double mid_time = TIME_NORM(0, time->mid_time);
     double mid_pix = ((double)time->mid_units) / mid_time;
+    double mid_peak = ((((double)time->part_units) / part_theoretical) / mid_time) * 100;
 
     double part_time = TIME_NORM(0, time->part_time);
     double part_pix = ((double)time->part_units) / part_time;
@@ -473,8 +518,8 @@ MCTimeReport(
     double shrink_peak = (shrink_pix / shrink_theoretical) * 100;
 
     printf("Kernel%19sCycles%14sPix/cyc%13s%%Peak\n", "", "", "");
-    printf("MCQuantization%11s%-20.6lf%-20.6lf--\n", "", mc_time, mc_pix);
-    printf("Median Partition%9s%-20.6lf%-20.6lf--\n", "", mid_time, mid_pix);
+    printf("MCQuantization%11s%-20.6lf%-20.6lf%.2lf%%\n", "", mc_time, mc_pix, mc_peak);
+    printf("Median Partition%9s%-20.6lf%-20.6lf%.2lf%%\n", "", mid_time, mid_pix, mid_peak);
     printf("Partition%16s%-20.6lf%-20.6lf%.2lf%%\n", "", part_time, part_pix, part_peak);
     printf("Align Partition%10s%-20.6lf%-20.6lf%.2lf%%\n", "", align_time, align_pix, align_peak);
     printf("Align Full-Partition%5s%-20.6lf%-20.6lf%.2lf%%\n", "", full_time, full_pix, full_peak);
