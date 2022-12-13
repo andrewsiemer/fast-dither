@@ -61,7 +61,7 @@ endif
 # Flags which only work for clang.
 CLANG_CFLAGS = -Weverything -Wno-padded -Wno-covered-switch-default\
                -Wno-unused-macros -Wno-gnu-statement-expression
-ANALYZER_CFLAGS = $(CFLAGS) $(CLANG_CFLAGS)
+ANALYZER_CFLAGS = $(CFLAGS) $(CLANG_CFLAGS) -Wno-source-uses-openmp
 
 ifeq ($(CC),clang)
 CFLAGS += $(CLANG_CFLAGS)
