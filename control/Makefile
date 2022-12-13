@@ -17,7 +17,7 @@ default: all
 ##### Configure build #####
 
 # Compiler. Clang has better warnings and static analysis.
-CC := clang
+CC := gcc
 
 # Directory containing all source code.
 SRC_ROOT = src
@@ -26,11 +26,11 @@ SRC_ROOT = src
 INC = $(SRC_ROOT) $(SRC_ROOT)/include
 
 # Libraries to link into the program.
-LIBS =
+LIBS = -fopenmp
 
 # Flags for use with the compiler. Currently assumes clang.
 CFLAGS =\
-	-std=c99 -Wall -Werror -mavx -mavx2 -mfma -O3 -ggdb\
+	-std=c99 -Wall -Werror -mavx -mavx2 -mfma -fopenmp -O3 -ggdb\
 	$(addprefix -I,$(wildcard $(INC)))
 
 include config.mk
@@ -39,6 +39,9 @@ include config.mk
 ifeq ($(CC),clang)
 CFLAGS += -Weverything -Wno-padded -Wno-covered-switch-default\
           -Wno-unused-macros
+endif
+ifeq ($(CC),gcc)
+CFLAGS += -Wno-strict-aliasing
 endif
 
 # Static analysis program. We just use clang.
