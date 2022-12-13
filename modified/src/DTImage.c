@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include <DTImage.h>
 #include <XMalloc.h>
 #include <png.h>
@@ -134,12 +135,13 @@ ReadDataFromFile(DTImage *img, FILE *file)
     if (img->type == t_PPM) {
         /* simple format, done directly */
         fseek(file, PPM_HEADER, SEEK_SET);
-        fscanf(file, " %zu %zu ", &img->width, &img->height);
+        int scan_out = fscanf(file, " %zu %zu ", &img->width, &img->height);
+        assert(scan_out == 2);
         img->pixels = malloc(sizeof(DTPixel) * img->width * img->height);
         img->resolution = img->width * img->height;
 
         for (size_t i = 0; i < img->resolution; i++)
-            fread(&img->pixels[i], sizeof(DTPixel), 1, file);
+            assert(fread(&img->pixels[i], sizeof(DTPixel), 1, file) == 1);
     }
     if (img->type == t_PNG) {
         /* create data and info structs */
