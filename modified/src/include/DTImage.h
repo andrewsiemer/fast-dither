@@ -23,7 +23,7 @@ typedef struct {
 
 typedef struct {
     int16_t r, g, b;
-} DTPixelDiff;
+} DTDiff;
 
 typedef enum {
     t_PPM,

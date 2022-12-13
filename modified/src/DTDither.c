@@ -166,7 +166,7 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
         // Startup
         for (size_t j = 0; j < MIN(3, width); j++)
         {
-            DTPixelDiff input;
+            DTPixel input;
             DTPixel output;
             switch (j)
             {
@@ -176,7 +176,7 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
                     input.r = MAX(MIN(shifted_input[offset+color_size*0], 255), 0);
                     input.g = MAX(MIN(shifted_input[offset+color_size*1], 255), 0);
                     input.b = MAX(MIN(shifted_input[offset+color_size*2], 255), 0);
-                    output = FindClosestColorFromPaletteDiff(input, palette);
+                    output = FindClosestColorFromPalette(input, palette);
                     shifted_output[offset+color_size*0] = output.r;
                     shifted_output[offset+color_size*1] = output.g;
                     shifted_output[offset+color_size*2] = output.b;
@@ -189,7 +189,7 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
                     input.r = MAX(MIN(shifted_input[offset+16+color_size*0], 255), 0);
                     input.g = MAX(MIN(shifted_input[offset+16+color_size*1], 255), 0);
                     input.b = MAX(MIN(shifted_input[offset+16+color_size*2], 255), 0);
-                    output = FindClosestColorFromPaletteDiff(input, palette);
+                    output = FindClosestColorFromPalette(input, palette);
                     shifted_output[offset+16+color_size*0] = output.r;
                     shifted_output[offset+16+color_size*1] = output.g;
                     shifted_output[offset+16+color_size*2] = output.b;
@@ -207,7 +207,7 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
                         input.r = MAX(MIN(shifted_input[offset+32+k+color_size*0], 255), 0);
                         input.g = MAX(MIN(shifted_input[offset+32+k+color_size*1], 255), 0);
                         input.b = MAX(MIN(shifted_input[offset+32+k+color_size*2], 255), 0);
-                        output = FindClosestColorFromPaletteDiff(input, palette);
+                        output = FindClosestColorFromPalette(input, palette);
                         shifted_output[offset+32+k+color_size*0] = output.r;
                         shifted_output[offset+32+k+color_size*1] = output.g;
                         shifted_output[offset+32+k+color_size*2] = output.b;
@@ -234,11 +234,11 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
 
             for (size_t k = 0; k < 16; k++)
             {
-                DTPixelDiff input;
+                DTPixel input;
                 input.r = shifted_input[j*16+offset+0*color_size+k];
                 input.g = shifted_input[j*16+offset+1*color_size+k];
                 input.b = shifted_input[j*16+offset+2*color_size+k];
-                DTPixel output = FindClosestColorFromPaletteDiff(input, palette);
+                DTPixel output = FindClosestColorFromPalette(input, palette);
                 shifted_output[j*16+offset+k+color_size*0] = output.r;
                 shifted_output[j*16+offset+k+color_size*1] = output.g;
                 shifted_output[j*16+offset+k+color_size*2] = output.b;
