@@ -117,9 +117,7 @@ FindClosestColorFromPalette(DTPixel needle, DTPalettePacked *palette)
         // find the slices where the minimum is updated
         mask = _mm256_cmpgt_epi32(min_val, dist);
         // update the indices
-        curr_idx = _mm256_and_si256(curr_idx, mask);
-        min_idx = _mm256_andnot_si256(mask, min_idx);
-        min_idx = _mm256_or_si256(curr_idx, min_idx);
+         min_idx = _mm256_blendv_epi8(min_idx, curr_idx, mask);
         // update the minimum (could use a "blend" here, but min is faster)
         min_val = _mm256_min_epi32(dist, min_val);
         // update the current indices
@@ -127,9 +125,7 @@ FindClosestColorFromPalette(DTPixel needle, DTPalettePacked *palette)
         // find the slices where the minimum is updated
         mask = _mm256_cmpgt_epi32(min_val, dist2);
         // update the indices
-        curr_idx = _mm256_and_si256(curr_idx, mask);
-        min_idx = _mm256_andnot_si256(mask, min_idx);
-        min_idx = _mm256_or_si256(curr_idx, min_idx);
+        min_idx = _mm256_blendv_epi8(min_idx, curr_idx, mask);
         // update the minimum (could use a "blend" here, but min is faster)
         min_val = _mm256_min_epi32(dist2, min_val);
         // update the current indices
