@@ -13,3 +13,5 @@ OBJECTS = DTDither.o DTImage.o DTPalette.o MCQuantization.o XMalloc.o main.o
 
 # Binary!
 TARGET = dither
+
+CC = gcc
