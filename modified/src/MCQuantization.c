@@ -545,11 +545,11 @@ MCTimeReport(
 
     printf("Kernel%19sCycles%14sPix/cyc%13s%%Peak\n", "", "", "");
     printf("MCQuantization%11s%-20.6lf%-20.6lf%.2lf%%\n", "", mc_time, mc_pix, mc_peak);
-    printf("Split%20s%-20.6lf%-20.6lf%.2lf%%\n", "", split_time, split_pix, split_peak);
-    printf("Median Partition%9s%-20.6lf%-20.6lf%.2lf%%\n", "", mid_time, mid_pix, mid_peak);
-    printf("Partition%16s%-20.6lf%-20.6lf%.2lf%%\n", "", part_time, part_pix, part_peak);
-    printf("Align Partition%10s%-20.6lf%-20.6lf%.2lf%%\n", "", align_time, align_pix, align_peak);
-    printf("Align Full-Partition%5s%-20.6lf%-20.6lf%.2lf%%\n", "", full_time, full_pix, full_peak);
-    printf("Align Sub-Partition%6s%-20.6lf%-20.6lf%.2lf%%\n", "", sub_time, sub_pix, sub_peak);
-    printf("Shrink%19s%-20.6lf%-20.6lf%.2lf%%\n", "", shrink_time, shrink_pix, shrink_peak);
+    printf(" Split%19s%-20.6lf%-20.6lf%.2lf%%\n", "", split_time, split_pix, split_peak);
+    printf(" Median Partition%8s%-20.6lf%-20.6lf%.2lf%%\n", "", mid_time, mid_pix, mid_peak);
+    printf("  Partition%14s%-20.6lf%-20.6lf%.2lf%%\n", "", part_time, part_pix, part_peak);
+    printf("   Align Partition%7s%-20.6lf%-20.6lf%.2lf%%\n", "", align_time, align_pix, align_peak);
+    printf("    Align Full-Partition%1s%-20.6lf%-20.6lf%.2lf%%\n", "", full_time, full_pix, full_peak);
+    printf("    Align Sub-Partition%2s%-20.6lf%-20.6lf%.2lf%%\n", "", sub_time, sub_pix, sub_peak);
+    printf(" Shrink%18s%-20.6lf%-20.6lf%.2lf%%\n", "", shrink_time, shrink_pix, shrink_peak);
 }
