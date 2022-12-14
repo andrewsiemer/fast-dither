@@ -10,3 +10,4 @@ dither
 modified/MedianPartition.gcc.S
 modified/MedianPartition.clang.S
 !samples/*.png
+!benchmark/*.png

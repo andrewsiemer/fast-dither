@@ -15,3 +15,5 @@ OBJECTS = DTDither.o DTImage.o DTPalette.o MCQuantization.o XMalloc.o main.o
 TARGET = dither
 
 CC = gcc
+
+src/DTImage.o: CFLAGS += -Wno-format
