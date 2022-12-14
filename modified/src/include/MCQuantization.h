@@ -21,7 +21,7 @@ typedef unsigned int mc_uint_t;
 
 typedef struct mc_workspace_t MCWorkspace;
 
-typedef struct {
+typedef struct mc_time {
     unsigned long long shrink_time;
     unsigned long long shrink_units;
     unsigned long long part_time;
@@ -34,6 +34,8 @@ typedef struct {
     unsigned long long align_units;
     unsigned long long sub_time;
     unsigned long long sub_units;
+    unsigned long long split_time;
+    unsigned long long split_units;
     unsigned long long full_time;
     unsigned long long full_units;
 } mc_time_t;

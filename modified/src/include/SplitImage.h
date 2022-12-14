@@ -13,13 +13,15 @@
 
 #include <DTImage.h>
 
+struct mc_time;
+
 /**
  * @brief Holds an image which has been split by its colors.
  *
  * The structure super promisses that r, g, and b will be aligned to a 32-byte
  * bound.
  */
-typedef struct {
+typedef struct split_image {
     uint8_t *r;
     uint8_t *g;
     uint8_t *b;
@@ -29,7 +31,7 @@ typedef struct {
     DTImageType type;
 } SplitImage;
 
-SplitImage *CreateSplitImage(DTImage *img);
+SplitImage *CreateSplitImage(DTImage *img, struct mc_time *time);
 void DestroySplitImage(SplitImage *img);
 
 #endif /* __SPLIT_IMAGE_H__ */

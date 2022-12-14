@@ -38,4 +38,5 @@ src/MedianPartition.o: src/include/sort_lut.h
 src/DTDither.o: CLANG_CFLAGS += -Wno-conversion -Wno-shadow -Wno-cast-align -Wno-missing-field-initializers
 src/MedianPartition.o: CFLAGS += -Wno-cast-align -Wno-shadow -Wno-array-bounds-pointer-arithmetic
 src/MCQuantization.o: CFLAGS += -Wno-cast-align
+src/SplitImage.o: CFLAGS += -Wno-cast-align
 src/DTPalette.o: CFLAGS += -Wno-cast-align

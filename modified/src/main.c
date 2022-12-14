@@ -185,7 +185,6 @@ ReadPaletteFromStdin(size_t size)
 DTPalettePacked *
 QuantizedPaletteForImage(DTImage *image, size_t size)
 {
-    SplitImage *img = CreateSplitImage(image);
     MCWorkspace *ws = MCWorkspaceMake((mc_byte_t) (double) log2(size), image->width * image->height);
     DTPalettePacked *palette = XMalloc(sizeof(DTPalettePacked));
 
@@ -195,6 +194,7 @@ QuantizedPaletteForImage(DTImage *image, size_t size)
 
     mc_time_t mc_time;
     MCTimeInit(&mc_time);
+    SplitImage *img = CreateSplitImage(image, &mc_time);
     DTPalette *mc = MCQuantizeData(img, ws, &mc_time);
     MCTimeReport(&mc_time);
 

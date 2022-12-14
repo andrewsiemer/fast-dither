@@ -147,9 +147,9 @@ FindClosestColorFromPalette(DTPixel needle, DTPalettePacked *palette, palette_ti
 
     // return the pixel to original DTPixel format (rbg)
     DTPixel ret = {
-        (byte)palette->colors[idx[k]],
-        (byte)palette->colors[palette->size+(size_t)idx[k]],
-        (byte)palette->colors[palette->size*2+(size_t)idx[k]]
+        .r = (byte)palette->colors[idx[k]],
+        .g = (byte)palette->colors[palette->size+(size_t)idx[k]],
+        .b = (byte)palette->colors[palette->size*2+(size_t)idx[k]]
     };
 
     TIMESTAMP(ts2);

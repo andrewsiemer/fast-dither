@@ -505,10 +505,15 @@ void
 MCTimeReport(
     mc_time_t *time
 ) {
+    const double split_theoretical = (32.0/28.0);
     const double sub_theoretical = (32.0/10.0);
     const double full_theoretical = (32.0/11.0);
     const double part_theoretical = (32.0/21.0);
     const double shrink_theoretical = (32.0/3.0);
+
+    double split_time = TIME_NORM(0, time->split_time);
+    double split_pix = ((double)time->split_units) / split_time;
+    double split_peak = (split_pix / split_theoretical) * 100;
 
     double mc_time = TIME_NORM(0, time->mc_time);
     double mc_pix = ((double)time->mc_units) / mc_time;
@@ -539,6 +544,7 @@ MCTimeReport(
     double shrink_peak = (shrink_pix / shrink_theoretical) * 100;
 
     printf("Kernel%19sCycles%14sPix/cyc%13s%%Peak\n", "", "", "");
+    printf("Split%20s%-20.6lf%-20.6lf%.2lf%%\n", "", split_time, split_pix, split_peak);
     printf("MCQuantization%11s%-20.6lf%-20.6lf%.2lf%%\n", "", mc_time, mc_pix, mc_peak);
     printf("Median Partition%9s%-20.6lf%-20.6lf%.2lf%%\n", "", mid_time, mid_pix, mid_peak);
     printf("Partition%16s%-20.6lf%-20.6lf%.2lf%%\n", "", part_time, part_pix, part_peak);
