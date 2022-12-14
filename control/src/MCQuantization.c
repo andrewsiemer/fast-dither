@@ -234,6 +234,7 @@ MCTimeReport(
 
     double mc_time = TIME_NORM(0, time->mc_time);
     double mc_pix = ((double)time->mc_units) / mc_time;
+    double mc_peak = (((((double)time->sort_units) / part_theoretical) + (((double)time->shrink_units) / shrink_theoretical)) / mc_time) * 100;
 
     double sort_time = TIME_NORM(0, time->sort_time);
     double sort_pix = ((double)time->sort_units) / sort_time;
@@ -244,7 +245,7 @@ MCTimeReport(
     double shrink_peak = (shrink_pix / shrink_theoretical) * 100;
 
     printf("Kernel%14sCycles%14sPix/cyc%13s%%Peak\n", "", "", "");
-    printf("MCQuantization%6s%-20.6lf%-20.6lf--\n", "", mc_time, mc_pix);
+    printf("MCQuantization%6s%-20.6lf%-20.6lf%.2lf%%\n", "", mc_time, mc_pix, mc_peak);
     printf("QSort%15s%-20.6lf%-20.6lf%.2lf%%\n", "", sort_time, sort_pix, sort_peak);
     printf("Shrink%14s%-20.6lf%-20.6lf%.2lf%%\n", "", shrink_time, shrink_pix, shrink_peak);
 }
