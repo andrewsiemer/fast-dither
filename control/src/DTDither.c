@@ -33,7 +33,7 @@ void DTTimeReport(dt_time_t *time)
     double dither_pix = ((double)time->dither_units) / dither_time;
     double dither_peak = (dither_pix / dither_theoretical) * 100;
 
-    printf("Dither%19s%-20.6lf%-20.6lf%.2lf%%\n", "", dither_time, dither_pix, dither_peak);
+    printf("Dither%14s%-20.6lf%-20.6lf%.2lf%%\n", "", dither_time, dither_pix, dither_peak);
 }
 
 void
