@@ -251,21 +251,13 @@ static void fsdither_runner(int16_t *shifted_input, int16_t *shifted_output, siz
  * 
  * 
  */
-static int16_t* shift_memory(DTPixel *pixels, size_t width, size_t height,
-                        size_t *new_width, size_t *new_height, dt_time_t *time)
+static void shift_memory(DTPixel *pixels, int16_t* shifted_memory, size_t width, size_t height,
+                        size_t padded_width, size_t padded_height, dt_time_t *time)
 {
     unsigned long long ts1, ts2;
     TIMESTAMP(ts1);
 
-    size_t padded_width = (height <= 16) ? width + 2*(height-1) : width + 2*(16-1);
-    size_t padded_height = (height / 16) * 16 + (height % 16 > 0) * 16; 
     unsigned long color_size = padded_height * padded_width;
-    unsigned long memory_size = 3 * color_size * sizeof(int16_t);
-
-    int16_t* shifted_memory;
-    posix_memalign((void**) &shifted_memory, 64, memory_size);
-
-    memset(shifted_memory, 0, memory_size);
 
     for (size_t i = 0; i < height; i++)
     {
@@ -280,14 +272,9 @@ static int16_t* shift_memory(DTPixel *pixels, size_t width, size_t height,
         }
     }
 
-    *new_width = padded_width;
-    *new_height = padded_height;
-
     TIMESTAMP(ts2);
     time->shift_time += (ts2 - ts1);
     time->shift_units += color_size;
-
-    return shifted_memory;
 }
 
 /**
@@ -340,25 +327,25 @@ void DTTimeInit(dt_time_t *time)
 
 void DTTimeReport(dt_time_t *time)
 {
-    const double shift_theoretical = (2*16.0/3.0);
+    // const double shift_theoretical = (16.0/3.0);
     const double dither_theoretical = (1/1.3125);
-    const double deshift_theoretical = (2*16.0/3.0);
+    // const double deshift_theoretical = (2*16.0/3.0);
 
-    double shift_time = TIME_NORM(0, time->shift_time);
-    double shift_pix = ((double)time->shift_units) / shift_time;
-    double shift_peak = (shift_pix / shift_theoretical) * 100;
+    // double shift_time = TIME_NORM(0, time->shift_time);
+    // double shift_pix = ((double)time->shift_units) / shift_time;
+    // double shift_peak = (shift_pix / shift_theoretical) * 100;
 
     double dither_time = TIME_NORM(0, time->dither_time);
     double dither_pix = ((double)time->dither_units) / dither_time;
     double dither_peak = (dither_pix / dither_theoretical) * 100;
 
-    double deshift_time = TIME_NORM(0, time->deshift_time);
-    double deshift_pix = ((double)time->deshift_units) / deshift_time;
-    double deshift_peak = (deshift_pix / deshift_theoretical) * 100;
+    // double deshift_time = TIME_NORM(0, time->deshift_time);
+    // double deshift_pix = ((double)time->deshift_units) / deshift_time;
+    // double deshift_peak = (deshift_pix / deshift_theoretical) * 100;
 
-    printf("Shift%20s%-20.6lf%-20.6lf%.2lf%%\n", "", shift_time, shift_pix, shift_peak);
+    // printf("Shift%20s%-20.6lf%-20.6lf%.2lf%%\n", "", shift_time, shift_pix, shift_peak);
     printf("Dither%19s%-20.6lf%-20.6lf%.2lf%%\n", "", dither_time, dither_pix, dither_peak);
-    printf("Deshift%18s%-20.6lf%-20.6lf%.2lf%%\n", "", deshift_time, deshift_pix, deshift_peak);
+    // printf("Deshift%18s%-20.6lf%-20.6lf%.2lf%%\n", "", deshift_time, deshift_pix, deshift_peak);
 }
 
 void
@@ -367,22 +354,37 @@ ApplyFloydSteinbergDither(DTImage *image, DTPalettePacked *palette, palette_time
     dt_time_t t;
     DTTimeInit(&t);
 
-    size_t shifted_width;
-    size_t shifted_height;
-    int16_t *shifted_memory = shift_memory(image->pixels, image->width, image->height,
-                                            &shifted_width, &shifted_height, &t);
+    unsigned int width = image->width;
+    unsigned int height = image->height;
+
+    // Calculate Memory Padding Sizes
+    size_t shifted_width = (height <= 16) ? width + 2*(height-1) : width + 2*(16-1);
+    size_t shifted_height = (height / 16) * 16 + (height % 16 > 0) * 16; 
+    size_t color_size = shifted_width * shifted_height;
+    size_t memory_size = 3 * color_size * sizeof(int16_t);
+
+    // Allocate Input Scratch Memory
+    int16_t* shifted_memory;
+    posix_memalign((void**) &shifted_memory, 64, memory_size);
+    memset(shifted_memory, 0, memory_size);
+
+    // Load Pixels Into Shifted Format
+    shift_memory(image->pixels, shifted_memory, width, height,
+                 shifted_width, shifted_height, &t);
     
+    // Allocate Output Scratch Memory
     int16_t *shifted_output;
     posix_memalign((void**) &shifted_output, 64, 3*shifted_width*shifted_height*sizeof(int16_t));
     memset(shifted_output, 0, 3*shifted_width*shifted_height*sizeof(int16_t));
 
+    // Run Kernel and De-Shift Output
     fsdither_runner(shifted_memory, shifted_output, shifted_width, shifted_height, palette, &t, palette_time);
     deshift_memory(image->pixels, shifted_output, image->width, image->height,
                                              shifted_width, shifted_height, &t);
-    free(shifted_memory);
-    free(shifted_output);
 
     DTTimeReport(&t);
+
+    // Free Scratch Memories
+    free(shifted_memory);
+    free(shifted_output);
 }
-
-
