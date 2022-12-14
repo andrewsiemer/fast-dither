@@ -99,5 +99,5 @@ PaletteTimeReport(palette_time_t *time) {
     double search_pix = search_perf/3; // pixels/cycle
     double search_peak = (search_perf / search_theoretical) * 100;
 
-    printf("Palette Search%11s%-20.6lf%-20.6lf%.2lf%%\n", "", search_time, search_pix, search_peak);
+    printf("Palette Search%6s%-20.6lf%-20.6lf%.2lf%%\n", "", search_time, search_pix, search_peak);
 }
