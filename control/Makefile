@@ -68,7 +68,7 @@ ifeq ($(CC),clang)
 CFLAGS += $(CLANG_CFLAGS)
 endif
 ifeq ($(CC),gcc)
-CFLAGS += -Wextra -Wno-strict-aliasing
+CFLAGS += -Wextra -Wno-strict-aliasing -Wno-missing-field-initializers
 endif
 
 # Static analysis program. We just use clang.
