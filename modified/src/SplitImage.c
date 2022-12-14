@@ -17,7 +17,6 @@
 #include <XMalloc.h>
 #include <CompilerGoop.h>
 
-#if 0
 /// @brief Documentation is a liberal myth.
 align(32) static const uint8_t shuffle_mask[32] = {
     0, 3, 6, 9, 12, 15, 1, 4, 7, 10, 13, 2, 5, 8, 11, 14,
@@ -33,7 +32,6 @@ align(32) static const uint8_t blend_mask[3][32] = {
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 255,
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
 };
-#endif
 
 SplitImage *
 CreateSplitImage(
@@ -54,19 +52,13 @@ CreateSplitImage(
     unsigned long long ts1, ts2;
     TIMESTAMP(ts1);
 
-    /*register __m256i r, g, b, m1, m2, m3, rev1, rev3, tmp, mtmp;
+    register __m256i r, g, b, m1, m2, m3, rev1, rev3, tmp, mtmp;
     register __m256i rgb_gbr, brg_rgb, gbr_brg, smask;
-    smask = _mm256_load_si256((__m256i*) shuffle_mask);*/
+    smask = _mm256_load_si256((__m256i*) shuffle_mask);
 
     size_t size = ret->w * ret->h;
-    for (size_t i = 0; i < (size /* % 32 */); i++) {
-        ret->r[i] = img->pixels[i].r;
-        ret->g[i] = img->pixels[i].g;
-        ret->b[i] = img->pixels[i].b;
-    }
-
-#if 0 // FIXME
-    for (size_t i = (size % 32); i < size; i += 32) {
+    size_t align_size = size - (size % 32);
+    for (size_t i = 0; i < align_size; i += 32) {
         rgb_gbr = _mm256_loadu_si256(((__m256i*) &img->pixels[i]) + 0);
         brg_rgb = _mm256_loadu_si256(((__m256i*) &img->pixels[i]) + 1);
         gbr_brg = _mm256_loadu_si256(((__m256i*) &img->pixels[i]) + 2);
@@ -99,8 +91,9 @@ CreateSplitImage(
         g = _mm256_or_si256(g, tmp);
 
         tmp = _mm256_srli_si256(rev1, 1);
-        tmp = _mm256_and_si256(m2, tmp);
-        b = _mm256_andnot_si256(m2, b);
+        mtmp = _mm256_srli_si256(m2, 1);
+        tmp = _mm256_and_si256(mtmp, tmp);
+        b = _mm256_andnot_si256(mtmp, b);
         b = _mm256_or_si256(b, tmp);
 
         /* Third group */
@@ -112,7 +105,7 @@ CreateSplitImage(
 
         tmp = _mm256_and_si256(m3, brg_rgb);
         g = _mm256_andnot_si256(m3, g);
-        b = _mm256_or_si256(b, tmp);
+        g = _mm256_or_si256(g, tmp);
 
         tmp = _mm256_slli_si256(brg_rgb, 10);
         mtmp = _mm256_slli_si256(m1, 10);
@@ -174,7 +167,7 @@ CreateSplitImage(
         g = _mm256_or_si256(g, tmp);
 
         tmp = _mm256_slli_si256(gbr_brg, 10);
-        mtmp = _mm256_slli_si256(m3, 10);
+        mtmp = _mm256_slli_si256(m1, 10);
         tmp = _mm256_and_si256(mtmp, tmp);
         b = _mm256_andnot_si256(mtmp, b);
         b = _mm256_or_si256(b, tmp);
@@ -185,9 +178,15 @@ CreateSplitImage(
         _mm256_storeu_si256((__m256i*) &ret->g[i], g);
         _mm256_storeu_si256((__m256i*) &ret->b[i], b);
     }
-#endif
+
+    for (size_t i = align_size; i < size; i++) {
+        ret->r[i] = img->pixels[i].r;
+        ret->g[i] = img->pixels[i].g;
+        ret->b[i] = img->pixels[i].b;
+    }
 
     TIMESTAMP(ts2);
+    time->mc_time += (ts2 - ts1);
     time->split_time += (ts2 - ts1);
     time->split_units += size;
 
