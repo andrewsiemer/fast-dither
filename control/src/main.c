@@ -77,18 +77,21 @@ main(int argc, char ** argv)
                 palette->colors[i].b
             );
 
+    palette_time_t palette_time;
+    PaletteTimeInit(&palette_time);
     if (dither) {
-        ApplyFloydSteinbergDither(input, palette);
+        ApplyFloydSteinbergDither(input, palette, &palette_time);
     } else {
         /* closest color only */
         DTPixel *pixel;
         for (size_t i = 0; i < input->height; i++) {
             for (size_t j = 0; j < input->width; j++) {
                 pixel = &input->pixels[i*input->width + j];
-                *pixel = FindClosestColorFromPalette(*pixel, palette);
+                *pixel = FindClosestColorFromPalette(*pixel, palette, &palette_time);
             }
         }
     }
+    PaletteTimeReport(&palette_time);
 
     WriteImageToFile(input, outputFile);
 

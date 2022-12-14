@@ -37,7 +37,7 @@ void DTTimeReport(dt_time_t *time)
 }
 
 void
-ApplyFloydSteinbergDither(DTImage *image, DTPalette *palette)
+ApplyFloydSteinbergDither(DTImage *image, DTPalette *palette, palette_time_t *palette_time)
 {
     dt_time_t t;
     DTTimeInit(&t);
@@ -47,7 +47,7 @@ ApplyFloydSteinbergDither(DTImage *image, DTPalette *palette)
     for (size_t i = 0; i < image->height; i++) {
         for (size_t j = 0; j < image->width; j++) {
             DTPixel original = image->pixels[i*image->width + j];
-            DTPixel new = FindClosestColorFromPalette(original, palette);
+            DTPixel new = FindClosestColorFromPalette(original, palette, palette_time);
 
             TIMESTAMP(ts1);
 

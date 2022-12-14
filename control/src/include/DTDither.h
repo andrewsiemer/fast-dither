@@ -24,6 +24,6 @@ typedef struct {
 void DTTimeInit(dt_time_t *time);
 void DTTimeReport(dt_time_t *time);
 
-void ApplyFloydSteinbergDither(DTImage *image, DTPalette *palette);
+void ApplyFloydSteinbergDither(DTImage *image, DTPalette *palette, palette_time_t *palette_time);
 
 #endif
